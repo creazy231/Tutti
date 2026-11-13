@@ -393,11 +393,11 @@ local function onDrop(encounterID, lootListKey)
     local link = info and text(info.itemHyperlink)
     if not link then return end
 
-    -- Decided: the game names a winner we can name, or says everyone passed.
+    -- Decided: the game names a winner, or says everyone passed. A card takes the decision only when
+    -- it can say who won.
     local winner = clear(info.winner, "table")
     local winnerGUID = winner and text(winner.playerGUID)
     local allPassed = yes(info.allPassed)
-    local decision = allPassed or winnerGUID ~= nil
 
     local dropKey = encounterID .. ":" .. lootListKey
     local card = byDropKey[dropKey]
@@ -405,7 +405,7 @@ local function onDrop(encounterID, lootListKey)
         card = rollOfDrop(info, link)
         local fresh = card == nil
         if fresh then
-            if decision then return end -- it was over before Tutti saw it
+            if winner or allPassed then return end -- it was over before Tutti saw it
             local duration, elapsed, stale = dropTiming(info)
             if stale then return end
             card = newCard(dropFields(link, duration, elapsed))
@@ -422,7 +422,7 @@ local function onDrop(encounterID, lootListKey)
     local changes = { picks = readPicks(card, info) }
     card.history = true
     card.tied = yes(info.isTied)
-    if card.status == "live" and decision then
+    if card.status == "live" and (winnerGUID or allPassed) then
         decide(card, winnerGUID, allPassed)
         changes.decided = true
     end

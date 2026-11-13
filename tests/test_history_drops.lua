@@ -781,6 +781,13 @@ T.it("a winner the game keeps secret decides nothing", function()
     W.setDrop(9, 7, won(G, W, ORLEN, 73, rolls, { allPassed = T.secret(false) }))
     T.eq(card.status, "decided", "the readable winner is")
     T.eq(#decided, 1)
+
+    -- A drop nobody saw begin, whose winner has no readable GUID, was over all the same: no card.
+    local G2, W2, ns2 = T.load()
+    W2.setDrop(9, 5, dropInfo(G2, W2, {}, { lootListKey = 5, winner = nameless }))
+    T.eq(#ns2.Rolls.Cards(), 0)
+    W2.setDrop(9, 6, dropInfo(G2, W2, {}, { lootListKey = 6, winner = T.secret({}) }))
+    T.eq(#ns2.Rolls.Cards(), 1, "a winner that cannot be read at all counts as no winner")
 end)
 
 T.it("a roll with no decision ends 5 s after its time", function()
