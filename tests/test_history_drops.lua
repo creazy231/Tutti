@@ -490,6 +490,141 @@ T.it("two drops first, two rolls second: each roll joins one card, in order", fu
     T.eq(ns.Rolls.Cards()[3].dropKey, nil)
 end)
 
+T.it("a click shows at once while the history still says choosing", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local function me() return ns.Rolls.Rows(card)[5] end
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(AYLA, ST.NoRoll) }))
+    T.eq(me().state, "wait", "the history lists the player as choosing and they have not clicked")
+    ns.Rolls.Pick(card, "need")
+    T.eq(me().state, "need", "the click shows at once")
+    -- An update the server sent before it took the click still says NoRoll for the player: the click stays.
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(BRISE, ST.Greed), rollInfo(CORVEL, ST.Pass),
+        rollInfo(AYLA, ST.NoRoll),
+    }))
+    T.eq(me().state, "need", "a history that has not caught up does not take the click back")
+    T.eq(me().roll, nil)
+    -- The history catches up: its own entry, with the number.
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec, 40), rollInfo(AYLA, ST.NeedMainSpec, 55), rollInfo(BRISE, ST.Greed),
+    }))
+    T.eq(me().state, "need")
+    T.eq(me().roll, 55)
+    -- A decided entry that says something else wins over the click: the pick was never made.
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec, 40), rollInfo(AYLA, ST.Pass) }))
+    T.eq(me().state, "pass", "the history's decided entry is the truth")
+    T.eq(me().roll, nil)
+end)
+
+T.it("while Blizzard's bind dialog is open the player's row is choosing", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(AYLA, ST.NoRoll) }))
+    ns.Rolls.Pick(card, "need")
+    W.fire("CONFIRM_LOOT_ROLL", 7, 1) -- the roll is not made until the player accepts
+    T.eq(card.mine, nil)
+    T.eq(ns.Rolls.Rows(card)[5].state, "wait", "no click on the card, the history says choosing")
+    W.fire("CANCEL_LOOT_ROLL", 7) -- accepted: the game took the roll
+    T.eq(ns.Rolls.Rows(card)[5].state, "need")
+end)
+
+T.it("a player who isn't in the roll is out", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    -- A drop the player has no roll on, and the history does not list them.
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(BRISE, ST.Greed) }))
+    local card = ns.Rolls.Cards()[1]
+    T.eq(card.rollID, nil)
+    local rows = ns.Rolls.Rows(card)
+    T.eq(column(rows, "state"), "need,greed,out,out,out", "the player is out like anyone the history leaves out")
+    T.eq(rows[5].isPlayer, true)
+    -- Their roll starts after all (the history came first): now they are in it.
+    W.addRoll(7, axeSpec(W))
+    T.eq(card.rollID, 7)
+    T.eq(ns.Rolls.Rows(card)[5].state, "wait", "a roll for the player makes them part of it: choosing")
+    ns.Rolls.Pick(card, "greed")
+    T.eq(ns.Rolls.Rows(card)[5].state, "greed")
+    -- A history that lists the player as choosing is the same.
+    W.setDrop(9, 8, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(AYLA, ST.NoRoll) },
+        { lootListKey = 8, itemHyperlink = W.itemLink(AXE + 1, "Other axe") }))
+    T.eq(ns.Rolls.Rows(ns.Rolls.Cards()[2])[5].state, "wait", "listed as choosing: choosing")
+end)
+
+T.it("nobody is choosing after the end", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local gone = { "Baz Qux", "Player-9-0002", "ROGUE" } -- someone the group no longer has
+    local card = newCard(W, ns, 7)
+    local function undecided()
+        return dropInfo(G, W, {
+            rollInfo(ORLEN, ST.NeedMainSpec, 73), rollInfo(BRISE, ST.Greed), rollInfo(CORVEL, ST.NoRoll),
+            rollInfo(AYLA, ST.NoRoll), rollInfo(gone, ST.NoRoll),
+        })
+    end
+    W.setDrop(9, 7, undecided())
+    T.eq(column(ns.Rolls.Rows(card), "state"), "need,greed,wait,out,wait,wait", "while it goes on they are choosing")
+    -- Decided: whoever never chose, the player and the leaver included, is out.
+    local info = undecided()
+    info.winner = rollInfo(ORLEN, ST.NeedMainSpec, 73, true)
+    W.setDrop(9, 7, info)
+    T.eq(card.status, "decided")
+    local rows = ns.Rolls.Rows(card)
+    T.eq(column(rows, "state"), "need,greed,out,out,out,out")
+    T.eq(rows[6].name, "Baz")
+    T.eq(rows[5].isPlayer, true)
+
+    -- Ended: the same, and the player's own click stays.
+    local G2, W2, ns2 = T.load()
+    W2.setGroup(party())
+    local ended = newCard(W2, ns2, 7)
+    ns2.Rolls.Pick(ended, "greed")
+    W2.setDrop(9, 7, dropInfo(G2, W2, {
+        rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(CORVEL, ST.NoRoll), rollInfo(AYLA, ST.NoRoll),
+    }))
+    T.eq(column(ns2.Rolls.Rows(ended), "state"), "need,out,wait,out,greed", "the click is the player's")
+    W2.advance(66)
+    T.eq(ended.status, "ended")
+    T.eq(column(ns2.Rolls.Rows(ended), "state"), "need,out,out,out,greed", "ended: Corvel is out, the click stays")
+
+    -- An ended card that never had the history: nobody known is choosing either.
+    local G3, W3, ns3 = T.load()
+    W3.setGroup(party())
+    local bare = newCard(W3, ns3, 7)
+    T.eq(column(ns3.Rolls.Rows(bare), "state"), "wait,wait,wait,wait,wait")
+    W3.advance(66)
+    T.eq(bare.status, "ended")
+    T.eq(column(ns3.Rolls.Rows(bare), "state"), "out,out,out,out,out")
+end)
+
+T.it("item info that arrives later fills in a card the history made", function()
+    local G, W, ns = T.load()
+    -- A link whose text names the item wrongly and whose colour is no quality code: the cache corrects both.
+    W.setDrop(9, 7, dropInfo(G, W, {}, { itemHyperlink = W.itemLink(AXE, "Name in the link", 3) }))
+    local card = ns.Rolls.Cards()[1]
+    T.eq(card.name, "Name in the link", "the link's own text, for now")
+    T.eq(card.quality, nil)
+    T.eq(card.icon, nil)
+    T.eq(card.label, nil)
+    T.eq(card.ilvl, nil)
+    local changed = listen(ns, "CARD_CHANGED")
+    W.cacheItem(AXE, axeInfo())
+    T.eq(card.name, "Guardian's Dualblade", "the client's name")
+    T.eq(card.quality, 3)
+    T.eq(card.icon, 135348)
+    T.eq(card.label, "Two-Hand Axe")
+    T.eq(card.ilvl, 33)
+    T.eq(#changed, 1, "one message")
+    T.eq(changed[1].card, card)
+    T.eq(changed[1].changes.item, true)
+end)
+
 T.it("a roll does not join a card the history already decided", function()
     local G, W, ns = T.load()
     local ST = G.Enum.EncounterLootDropRollState
@@ -965,12 +1100,15 @@ T.it("a member the group list could not name still has a row from the history", 
     T.eq(#ns2.Group.Members(), 4, "the player has no readable GUID: not listed")
     local card2 = newCard(W2, ns2, 7)
     local ST2 = G2.Enum.EncounterLootDropRollState
-    W2.setDrop(9, 7, dropInfo(G2, W2, { rollInfo(ORLEN, ST2.NeedMainSpec), rollInfo(AYLA, ST2.Greed) }))
+    ns2.Rolls.Pick(card2, "need")
+    W2.setDrop(9, 7, dropInfo(G2, W2, { rollInfo(ORLEN, ST2.NeedMainSpec), rollInfo(AYLA, ST2.NoRoll) }))
     local rows2 = ns2.Rolls.Rows(card2)
     T.eq(#rows2, 5)
     T.eq(rows2[5].name, "Ayla")
     T.eq(rows2[5].isPlayer, true, "isSelf says who they are")
-    T.eq(rows2[5].state, "greed")
+    T.eq(rows2[5].state, "need", "their click shows here too, while the history still says choosing")
+    W2.setDrop(9, 7, dropInfo(G2, W2, { rollInfo(ORLEN, ST2.NeedMainSpec), rollInfo(AYLA, ST2.Greed) }))
+    T.eq(ns2.Rolls.Rows(card2)[5].state, "greed", "and the history's decided entry wins")
 end)
 
 T.it("a tie is the game's word", function()
@@ -1010,7 +1148,8 @@ T.it("Rows of nothing is the group, choosing", function()
     W.setGroup(party())
     T.eq(column(ns.Rolls.Rows(nil), "state"), "wait,wait,wait,wait,wait")
     T.eq(column(ns.Rolls.Rows({}), "state"), "wait,wait,wait,wait,wait")
-    T.eq(column(ns.Rolls.Rows({ history = true, picks = {} }), "state"), "out,out,out,out,wait")
+    T.eq(column(ns.Rolls.Rows({ history = true, picks = {} }), "state"), "out,out,out,out,out",
+        "the history has the drop and lists nobody: the player is out too")
 end)
 
 T.it("a two-item boss drop with staggered picks", function()
@@ -1081,10 +1220,13 @@ T.it("picks made by hand still make rows", function()
     } }
     local rows = ns.Rolls.Rows(card)
     T.eq(column(rows, "name"), "Orlen,Brisé,Corvel,Kestrel,Ayla,Foo,Baz", "the group, then the others by GUID")
-    T.eq(column(rows, "state"), "greed,out,out,out,wait,need,pass")
+    T.eq(column(rows, "state"), "greed,out,out,out,out,need,pass")
     T.eq(column(rows, "roll"), "12,nil,nil,nil,nil,87,nil")
     T.eq(column(rows, "isWinner"), "false,false,false,false,false,true,false")
     T.eq(column(rows, "isPlayer"), "false,false,false,false,true,false,false")
+    -- A card made by hand has no status: nobody is taken for out because the roll is over.
+    card.picks["Player-9-0003"] = { state = "wait", name = "Corge Grault", class = "PRIEST" }
+    T.eq(ns.Rolls.Rows(card)[8].state, "wait")
 end)
 
 T.it("an error in the history handler is reported, not thrown", function()

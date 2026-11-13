@@ -14,8 +14,11 @@
 --                                  { guid, name, class, isPlayer, state, roll|nil, isWinner }
 --                                  state: "need" (main or off spec) | "greed" | "transmog" | "pass" |
 --                                  "wait" (still choosing) | "out" (not in the roll: the history has
---                                  the drop and not this member). The player's row is the history's
---                                  own entry, else their pick on the card, else "wait".
+--                                  the drop and not this member). Once a card is decided or ended nobody
+--                                  is choosing: a "wait" reads "out". The player's row: what the history
+--                                  says they chose, else the click they made (it shows at once), else
+--                                  "wait" if the history lists them or the game gave them a roll, else
+--                                  "out" once the card has the history.
 --    ns.Rolls.Forget(card), ns.Rolls.ForgetDecided()
 --  A card: id, rollID|nil, link, itemID, name, icon, quality, count, bop, label|nil, ilvl|nil,
 --  canNeed, canGreed, canTransmog, reasonNeed|nil (text), startedAt (GetTime), duration (s),
@@ -476,29 +479,44 @@ function Rolls.Pick(card, choice)
     return true
 end
 
+-- The player's own row. The history's entry once it says what they chose; else the click they made
+-- (it shows at once, even while the history still lists them as choosing); else choosing, when the
+-- history lists them or the game gave them a roll; else out, as for any member the history does not
+-- list, once the card has the history.
+local function playerState(card, pick)
+    if pick and pick.state ~= "wait" then return pick.state end
+    if card.mine then return card.mine end
+    if pick or card.rollID then return "wait" end
+    return card.history and "out" or "wait"
+end
+
 -- One row per group member in the group's order, then one per roller the group does not list
 -- (someone who left, or whom the group list could not name), from the history, in its order. A
 -- member's row is their pick in the history. Until the card has the history everyone is still
--- choosing, and the player's row shows their own pick; once it has, a member it does not list is
--- out. The player's row is the history's own entry first, else their pick on the card, else
--- choosing.
+-- choosing; once it has, a member it does not list is out. The player's row is `playerState`.
+-- Once the card is decided or ended nobody is choosing: a row still at "wait" is out.
 function Rolls.Rows(card)
     card = type(card) == "table" and card or {}
     local picks = type(card.picks) == "table" and card.picks or {}
+    local over = card.status == "decided" or card.status == "ended"
+    local function settled(state)
+        if over and state == "wait" then return "out" end
+        return state
+    end
     local rows, listed = {}, {}
     for _, member in ipairs(ns.Group.Members()) do
         local pick = picks[member.guid]
         local state
-        if pick then
+        if member.isPlayer then
+            state = playerState(card, pick)
+        elseif pick then
             state = pick.state
-        elseif member.isPlayer then
-            state = card.mine or "wait"
         else
             state = card.history and "out" or "wait"
         end
         rows[#rows + 1] = {
             guid = member.guid, name = member.first, class = member.class, isPlayer = member.isPlayer,
-            state = state, roll = pick and pick.roll or nil,
+            state = settled(state), roll = pick and pick.roll or nil,
             isWinner = card.winner ~= nil and card.winner == member.guid,
         }
         listed[member.guid] = true
@@ -514,9 +532,11 @@ function Rolls.Rows(card)
     end)
     for _, guid in ipairs(rest) do
         local pick = picks[guid]
+        local mine = pick.isSelf == true -- the player, when the group list could not list them
         rows[#rows + 1] = {
-            guid = guid, name = ns.Group.FirstName(pick.name), class = pick.class, isPlayer = pick.isSelf == true,
-            state = pick.state, roll = pick.roll, isWinner = card.winner == guid,
+            guid = guid, name = ns.Group.FirstName(pick.name), class = pick.class, isPlayer = mine,
+            state = settled(mine and playerState(card, pick) or pick.state), roll = pick.roll,
+            isWinner = card.winner == guid,
         }
     end
     return rows
