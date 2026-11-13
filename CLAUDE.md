@@ -9,9 +9,9 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
   pixel-close to it). Plan: `docs/plan.md`; the builder's decisions and progress:
   `docs/ledger.md`.
 - Offline checks, from this folder, after every change:
-  `luajit tests/run.lua && luajit tests/syntax.lua` (LuaJIT from Homebrew; `tests/fake_wow.lua`
-  is the fake client, `tests/harness.lua` the loader). One file:
-  `luajit tests/run.lua tests/test_x.lua`.
+  `luajit tests/run.lua && luajit tests/syntax.lua && python3 -I tests/test_media.py` (LuaJIT
+  from Homebrew; `tests/fake_wow.lua` is the fake client, `tests/harness.lua` the loader). One
+  file: `luajit tests/run.lua tests/test_x.lua`.
 - Blizzard's own code: github.com/Gethe/wow-ui-source, branch `forever` (the loot-history and
   roll-popup files Tutti works with are named in `docs/design.md`, "How it works"). Check every
   new hook or API against it.
