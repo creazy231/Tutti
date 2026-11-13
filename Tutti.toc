@@ -20,3 +20,4 @@ Core\Group.lua
 Core\Rolls.lua
 Core\Popups.lua
 Core\History.lua
+Core\Integrations.lua
