@@ -2,19 +2,27 @@
 --  Tutti: the card model. A card is one item the group is rolling on. A card for the player's
 --  own roll appears when the game starts it (START_LOOT_ROLL) or, after a /reload, when the game
 --  still lists it (GetActiveLootRollIDs). It carries what the window needs: the item, what the
---  player may choose, the countdown and the player's pick.
+--  player may choose, the countdown and the player's pick. The group's side comes from the loot
+--  history (LOOT_HISTORY_UPDATE_DROP): who chose what, the numbers, the winner.
 --    ns.Rolls.Cards()              { card, ... } in arrival order; a new list on every call
 --    ns.Rolls.Get(id)              a card by Tutti's own id
 --    ns.Rolls.Pick(card, choice)   "need" | "greed" | "transmog" | "pass"; true when it was sent
 --    ns.Rolls.TimeLeft(card)       seconds left, never below 0
 --    ns.Rolls.AwaitsMe(card)       the player can still choose on this card
---    ns.Rolls.Rows(card)           one row per group member:
---                                  { guid, name, class, isPlayer, state, roll, isWinner }
+--    ns.Rolls.Rows(card)           one row per group member, in the group's order, then one per roller
+--                                  the group no longer has (or could not name), in the history's order:
+--                                  { guid, name, class, isPlayer, state, roll|nil, isWinner }
+--                                  state: "need" (main or off spec) | "greed" | "transmog" | "pass" |
+--                                  "wait" (still choosing) | "out" (not in the roll: the history has
+--                                  the drop and not this member). The player's row is the history's
+--                                  own entry, else their pick on the card, else "wait".
 --    ns.Rolls.Forget(card), ns.Rolls.ForgetDecided()
 --  A card: id, rollID|nil, link, itemID, name, icon, quality, count, bop, label|nil, ilvl|nil,
 --  canNeed, canGreed, canTransmog, reasonNeed|nil (text), startedAt (GetTime), duration (s),
---  mine|nil, pending|nil, over, history, picks, status ("live"|"decided"|"ended"), winner|nil,
---  allPassed, decidedAt|nil, demo|nil.
+--  mine|nil, pending|nil, over, history, tied, picks, status ("live"|"decided"|"ended"),
+--  winner|nil (a GUID), allPassed, decidedAt|nil, demo|nil, and once the history has the drop:
+--  encounterID, lootListKey, dropKey ("<encounterID>:<lootListKey>").
+--  picks: [guid] = { state, roll|nil, name, class, isSelf, order } as the history lists them.
 --  A bind confirmation: Need or Greed on a soulbound item first makes the game ask the player to
 --  confirm (CONFIRM_LOOT_ROLL, Blizzard's own dialog; Tutti leaves it alone and never confirms).
 --  The roll is not made until the dialog is accepted, so the pick waits as `pending` instead of
@@ -23,10 +31,21 @@
 --  the pending pick becomes `mine`. If the time runs out while the dialog is open the game says
 --  the same thing, so `mine` then shows a pick the game passed on; the loot history, which names
 --  the player's real pick, corrects it.
+--  The history and the rolls meet in a card, whichever comes first. A drop (encounterID, lootListKey)
+--  joins a card that has a roll and no drop yet and shows the same item: the same link, else the same
+--  item; among several, the one whose pick is the player's state in the drop, then the oldest. A drop
+--  with no such card, still undecided and not out of time, makes a card of its own: no roll, `over`,
+--  no buttons. When the player's roll starts later it joins that card instead of making a second one.
+--  A card is decided when the history names a winner or says everyone passed. A card the history
+--  never decides ends 5 seconds (ENDED_GRACE) after its time is up; it is then final.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided
---    "CARD_DECIDED", card              once per card
+--                                      picks: [guid] = "state" | "roll", for the picks that are new or
+--                                      changed: "state" for a new pick or another state, "roll" when
+--                                      only the number is new or different. decided: this message
+--                                      is the card's decision (or its end).
+--    "CARD_DECIDED", card              once per card: a decision, or the end of a roll nobody decided
 --    "CARD_REMOVED", card
 --  Everything the game hands over passes ns.IsSecret and a type check before it is used.
 -------------------------------------------------------------------------------
@@ -35,6 +54,7 @@ local Rolls = {}
 ns.Rolls = Rolls
 
 local DEFAULT_DURATION = 60 -- seconds, when the game names no time for a roll
+local ENDED_GRACE = 5 -- seconds after a roll's time that the game may still say how it went
 
 -- RollOnLoot's types.
 local ROLL_TYPE = { pass = 0, need = 1, greed = 2, transmog = 4 }
@@ -46,8 +66,13 @@ local CHOICE_OF = { [1] = "need", [2] = "greed", [4] = "transmog" }
 local REASON_FALLBACK = { [1] = "Your class may not roll need on this item." }
 local REASON_ANY = "You can't roll Need on this item."
 
-local list = {}  -- the cards in arrival order
-local byID = {}  -- Tutti's own id -> card
+-- A pick in the loot history as a row's state: Enum.EncounterLootDropRollState (NeedMainSpec 0,
+-- NeedOffSpec 1, Transmog 2, Greed 3, NoRoll 4, Pass 5).
+local STATE_OF = { [0] = "need", [1] = "need", [2] = "transmog", [3] = "greed", [4] = "wait", [5] = "pass" }
+
+local list = {}       -- the cards in arrival order
+local byID = {}       -- Tutti's own id -> card
+local byDropKey = {}  -- "<encounterID>:<lootListKey>" -> the card that has the drop
 local lastID = 0
 
 -------------------------------------------------------------------------------
@@ -113,6 +138,26 @@ local function timing(rollID, rollTime)
     return duration, elapsed
 end
 
+-- A pick of the loot history as a row's state, nil when the game gave none or one this client
+-- has no word for.
+local function stateOf(value)
+    value = clear(value, "number")
+    return value and STATE_OF[value] or nil
+end
+
+-- What the client knows of the item a link names: its name, icon and quality. An item that is not
+-- in the client's cache still has its name in the link and, as Forever writes a link, its quality in
+-- the colour; the rest follows with GET_ITEM_INFO_RECEIVED. Any of the three may be nil.
+local function itemFacts(link)
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local name, icon, quality
+    if type(get) == "function" then
+        local n, _, q, _, _, _, _, _, _, texture = get(link)
+        name, quality, icon = text(n), clear(q, "number"), clear(texture, "number") or text(texture)
+    end
+    return name or text(link:match("|h%[(.-)%]|h")), icon, quality or tonumber(link:match("^|cnIQ(%d)"))
+end
+
 -------------------------------------------------------------------------------
 --  Cards
 -------------------------------------------------------------------------------
@@ -120,24 +165,47 @@ local function changed(card, changes)
     ns.Fire("CARD_CHANGED", card, changes)
 end
 
-local function build(rollID, rollTime)
+-- What a roll says: its item, what the player may choose and its countdown, as card fields. Nil
+-- without a readable name.
+local function readRoll(rollID, rollTime)
     local info = readInfo(rollID)
     if not info then return nil end
     local link = GetLootRollItemLink and text(GetLootRollItemLink(rollID)) or nil
     local duration, elapsed = timing(rollID, rollTime)
-    lastID = lastID + 1
-    local card = {
-        id = lastID, rollID = rollID,
-        link = link, itemID = ns.Items.ID(link),
+    local label, ilvl = ns.Items.Describe(link)
+    return {
+        rollID = rollID, link = link, itemID = ns.Items.ID(link),
         name = info.name, icon = info.icon, quality = info.quality, count = info.count, bop = info.bop,
         canNeed = info.canNeed, canGreed = info.canGreed, canTransmog = info.canTransmog,
-        reasonNeed = info.reasonNeed,
-        startedAt = GetTime() - elapsed, duration = duration,
-        over = false, history = false, picks = {},
-        status = "live", allPassed = false,
+        reasonNeed = info.reasonNeed, startedAt = GetTime() - elapsed, duration = duration,
+        label = label, ilvl = ilvl,
     }
-    card.label, card.ilvl = ns.Items.Describe(link)
+end
+
+-- A card with `fields` (from a roll or a drop) on top of what every new card starts with. It is in
+-- the list; the caller announces it.
+local function newCard(fields)
+    lastID = lastID + 1
+    local card = {
+        id = lastID, over = false, history = false, tied = false, picks = {}, status = "live", allPassed = false,
+    }
+    for key, value in pairs(fields) do card[key] = value end
+    list[#list + 1] = card
+    byID[card.id] = card
     return card
+end
+
+-- The live cards that `wanted` accepts and that show the item a link names, oldest first: those with
+-- that very link or, when there are none, those with that item.
+local function showing(link, itemID, wanted)
+    local same, item = {}, {}
+    for _, card in ipairs(list) do
+        if card.status == "live" and wanted(card) then
+            if link and card.link == link then same[#same + 1] = card end
+            if itemID and card.itemID == itemID then item[#item + 1] = card end
+        end
+    end
+    return #same > 0 and same or item
 end
 
 -- A roll that already has a live card is the same roll: START_LOOT_ROLL and the rebuild after a
@@ -149,13 +217,53 @@ local function hasLiveCard(rollID)
     return false
 end
 
+-- The game named a card's winner, or says everyone passed: the card is decided, once. The caller
+-- announces the change.
+local function decide(card, winnerGUID, allPassed)
+    card.status, card.winner, card.allPassed, card.decidedAt = "decided", winnerGUID, allPassed, GetTime()
+    ns.Fire("CARD_DECIDED", card)
+end
+
+-- Nobody decided the card and ENDED_GRACE seconds have passed since its time ran out: it is over.
+local function endCard(card)
+    card.status, card.decidedAt = "ended", GetTime()
+    ns.Fire("CARD_DECIDED", card)
+    changed(card, { decided = true })
+end
+
+-- Looks at a card when its roll has been over for ENDED_GRACE seconds, and ends it if the history
+-- has not decided it. The card's time can move (the player's roll may join a card the history made),
+-- so each look reads the deadline again; a card that is gone or no longer live is left alone.
+local function watch(card)
+    local function look()
+        if card.status ~= "live" or byID[card.id] ~= card then return end
+        local left = card.startedAt + card.duration + ENDED_GRACE - GetTime()
+        if left > 0.05 then ns.After(left, look) else endCard(card) end
+    end
+    ns.After(Rolls.TimeLeft(card) + ENDED_GRACE, look)
+end
+
+-- The player's roll for an item whose drop the history showed first: it joins the card the history
+-- made, which gets what the roll knows (the buttons, the countdown, the roll's own name and icon)
+-- and keeps what the history gave it.
+local function join(card, roll)
+    for key, value in pairs(roll) do card[key] = value end
+    card.over, card.mine, card.pending = false, nil, nil
+    changed(card, { item = true, over = true })
+    watch(card)
+end
+
 local function add(rollID, rollTime)
     if hasLiveCard(rollID) then return end
-    local card = build(rollID, rollTime)
-    if not card then return end
-    list[#list + 1] = card
-    byID[card.id] = card
+    local roll = readRoll(rollID, rollTime)
+    if not roll then return end
+    local waiting = showing(roll.link, roll.itemID, function(card)
+        return card.rollID == nil and card.dropKey ~= nil
+    end)[1]
+    if waiting then return join(waiting, roll) end
+    local card = newCard(roll)
     ns.Fire("CARD_ADDED", card)
+    watch(card)
 end
 
 -- The player's part of a roll is over (chosen, or out of time). The card stays live: the group may
@@ -185,12 +293,140 @@ local function confirming(card, kind)
     end
 end
 
--- The item info of a card, asked again: it may have reached the client's cache since.
+-- The item info of a card, asked again: it may have reached the client's cache since. A card the
+-- loot history made has no roll to name its item, so it takes its name, icon and quality from the
+-- item as well, and keeps what it had where the client still says nothing.
 local function refreshItem(card)
     local label, ilvl = ns.Items.Describe(card.link)
-    if label == card.label and ilvl == card.ilvl then return end
+    local different = label ~= card.label or ilvl ~= card.ilvl
     card.label, card.ilvl = label, ilvl
-    changed(card, { item = true })
+    if not card.rollID and card.link then
+        local name, icon, quality = itemFacts(card.link)
+        name, icon, quality = name or card.name, icon or card.icon, quality or card.quality
+        different = different or name ~= card.name or icon ~= card.icon or quality ~= card.quality
+        card.name, card.icon, card.quality = name, icon, quality
+    end
+    if different then changed(card, { item = true }) end
+end
+
+-------------------------------------------------------------------------------
+--  The loot history: the group's side of a roll
+-------------------------------------------------------------------------------
+-- Takes a drop's picks onto the card, by GUID (an entry that cannot be read, or has no readable GUID,
+-- is skipped; a field that cannot be read is left out, and a pick keeps the state it had). Gives
+-- { [guid] = "state" | "roll" } for the picks that are new or different, nil when there are none.
+local function readPicks(card, info)
+    local entries = clear(info.rollInfos, "table")
+    local marks
+    for i = 1, entries and #entries or 0 do
+        local entry = clear(entries[i], "table")
+        local guid = entry and text(entry.playerGUID)
+        if guid then
+            local pick = card.picks[guid]
+            local oldState, oldRoll = pick and pick.state, pick and pick.roll
+            pick = pick or {}
+            pick.state = stateOf(entry.state) or pick.state or "wait"
+            pick.roll = clear(entry.roll, "number")
+            pick.name = text(entry.playerName) or pick.name
+            pick.class = text(entry.playerClass) or pick.class
+            pick.isSelf = yes(entry.isSelf)
+            pick.order = i
+            card.picks[guid] = pick
+            local mark = (pick.state ~= oldState and "state") or (pick.roll ~= oldRoll and "roll") or nil
+            if mark then
+                marks = marks or {}
+                marks[guid] = mark
+            end
+        end
+    end
+    return marks
+end
+
+-- How long a drop's roll lasts and how much of it has gone, in seconds, and whether its time is up.
+-- The history keeps its times in milliseconds on the game's own clock. A drop that names no
+-- readable duration is never out of time: the game does not say how long the roll lasts, so a minute.
+local function dropTiming(info)
+    local startTime, duration = clear(info.startTime, "number"), clear(info.duration, "number")
+    local now = type(C_LootHistory.GetLootHistoryTime) == "function"
+        and clear(C_LootHistory.GetLootHistoryTime(), "number")
+    local elapsed = (startTime and now) and math.max(now - startTime, 0) or 0
+    if duration and duration > 0 then
+        return duration / 1000, math.min(elapsed, duration) / 1000, elapsed >= duration
+    end
+    return DEFAULT_DURATION, math.min(elapsed / 1000, DEFAULT_DURATION), false
+end
+
+-- The fields of a card for a drop the player has no roll on: the item from its link, nothing to
+-- choose, so no buttons (`over`).
+local function dropFields(link, duration, elapsed)
+    local name, icon, quality = itemFacts(link)
+    local label, ilvl = ns.Items.Describe(link)
+    return {
+        link = link, itemID = ns.Items.ID(link),
+        name = name or link, icon = icon, quality = quality, count = 1, bop = false,
+        canNeed = false, canGreed = false, canTransmog = false,
+        startedAt = GetTime() - elapsed, duration = duration, label = label, ilvl = ilvl, over = true,
+    }
+end
+
+-- The card of the player's roll that a drop belongs to: of the live cards with a roll and no drop that
+-- show the item, the one whose pick is the player's state in the drop (no pick counts as still
+-- choosing), else the oldest. Nil when there is none.
+local function rollOfDrop(info, link)
+    local candidates = showing(link, ns.Items.ID(link), function(card)
+        return card.rollID ~= nil and card.dropKey == nil
+    end)
+    local state = stateOf(info.playerRollState)
+    for _, card in ipairs(candidates) do
+        if state and (card.mine or "wait") == state then return card end
+    end
+    return candidates[1]
+end
+
+-- A drop of the history has news. The card that has the drop takes it. A drop no card has yet goes to
+-- the player's roll for that item or, if it is still undecided and not out of time, to a card of its
+-- own. The card then takes the picks, and the decision if the game made one, and is announced.
+local function onDrop(encounterID, lootListKey)
+    local history = C_LootHistory
+    if type(history) ~= "table" or type(history.GetSortedInfoForDrop) ~= "function" then return end
+    local info = clear(history.GetSortedInfoForDrop(encounterID, lootListKey), "table")
+    local link = info and text(info.itemHyperlink)
+    if not link then return end
+
+    -- Decided: the game names a winner we can name, or says everyone passed.
+    local winner = clear(info.winner, "table")
+    local winnerGUID = winner and text(winner.playerGUID)
+    local allPassed = yes(info.allPassed)
+    local decision = allPassed or winnerGUID ~= nil
+
+    local dropKey = encounterID .. ":" .. lootListKey
+    local card = byDropKey[dropKey]
+    if not card then
+        card = rollOfDrop(info, link)
+        local fresh = card == nil
+        if fresh then
+            if decision then return end -- it was over before Tutti saw it
+            local duration, elapsed, stale = dropTiming(info)
+            if stale then return end
+            card = newCard(dropFields(link, duration, elapsed))
+        end
+        card.encounterID, card.lootListKey, card.dropKey = encounterID, lootListKey, dropKey
+        byDropKey[dropKey] = card
+        if fresh then
+            ns.Fire("CARD_ADDED", card)
+            watch(card)
+        end
+    end
+
+    local firstSight = not card.history
+    local changes = { picks = readPicks(card, info) }
+    card.history = true
+    card.tied = yes(info.isTied)
+    if card.status == "live" and decision then
+        decide(card, winnerGUID, allPassed)
+        changes.decided = true
+    end
+    if firstSight or next(changes) then changed(card, changes) end
 end
 
 -------------------------------------------------------------------------------
@@ -240,15 +476,47 @@ function Rolls.Pick(card, choice)
     return true
 end
 
--- One row per group member in the group's order. The group's picks come from the loot history;
--- until a card has them everyone is still choosing, and the player's row shows their own pick.
+-- One row per group member in the group's order, then one per roller the group does not list
+-- (someone who left, or whom the group list could not name), from the history, in its order. A
+-- member's row is their pick in the history. Until the card has the history everyone is still
+-- choosing, and the player's row shows their own pick; once it has, a member it does not list is
+-- out. The player's row is the history's own entry first, else their pick on the card, else
+-- choosing.
 function Rolls.Rows(card)
-    local mine = type(card) == "table" and card.mine or nil
-    local rows = {}
+    card = type(card) == "table" and card or {}
+    local picks = type(card.picks) == "table" and card.picks or {}
+    local rows, listed = {}, {}
     for _, member in ipairs(ns.Group.Members()) do
+        local pick = picks[member.guid]
+        local state
+        if pick then
+            state = pick.state
+        elseif member.isPlayer then
+            state = card.mine or "wait"
+        else
+            state = card.history and "out" or "wait"
+        end
         rows[#rows + 1] = {
             guid = member.guid, name = member.first, class = member.class, isPlayer = member.isPlayer,
-            state = (member.isPlayer and mine) or "wait", isWinner = false, -- no roll yet
+            state = state, roll = pick and pick.roll or nil,
+            isWinner = card.winner ~= nil and card.winner == member.guid,
+        }
+        listed[member.guid] = true
+    end
+    local rest = {}
+    for guid in pairs(picks) do
+        if not listed[guid] then rest[#rest + 1] = guid end
+    end
+    table.sort(rest, function(a, b)
+        local x, y = picks[a].order or math.huge, picks[b].order or math.huge
+        if x ~= y then return x < y end
+        return a < b
+    end)
+    for _, guid in ipairs(rest) do
+        local pick = picks[guid]
+        rows[#rows + 1] = {
+            guid = guid, name = ns.Group.FirstName(pick.name), class = pick.class, isPlayer = pick.isSelf == true,
+            state = pick.state, roll = pick.roll, isWinner = card.winner == guid,
         }
     end
     return rows
@@ -257,6 +525,7 @@ end
 function Rolls.Forget(card)
     if type(card) ~= "table" or byID[card.id] ~= card then return end
     byID[card.id] = nil
+    if card.dropKey and byDropKey[card.dropKey] == card then byDropKey[card.dropKey] = nil end
     for i = 1, #list do
         if list[i] == card then table.remove(list, i); break end
     end
@@ -306,6 +575,12 @@ ns.On("GET_ITEM_INFO_RECEIVED", function(_, itemID)
     for _, card in ipairs(Rolls.Cards()) do
         if card.itemID == itemID then refreshItem(card) end
     end
+end)
+
+-- The history updates a drop at every choice and at the end.
+ns.On("LOOT_HISTORY_UPDATE_DROP", function(_, encounterID, lootListKey)
+    encounterID, lootListKey = clear(encounterID, "number"), clear(lootListKey, "number")
+    if encounterID and lootListKey then onDrop(encounterID, lootListKey) end
 end)
 
 -- After a /reload (and at any loading screen) the game still lists the rolls the player has not

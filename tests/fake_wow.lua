@@ -891,6 +891,48 @@ function F.new(opts)
     end
     G.RollOnLoot = function(rollID, rollType) W.rolled[#W.rolled + 1] = { rollID, rollType } end
 
+    ---------------------------------------------------------------------------
+    --  The loot history: what the group did with each drop
+    ---------------------------------------------------------------------------
+    -- Blizzard's enum, with its numbers (Blizzard_APIDocumentationGenerated/LootHistoryDocumentation.lua).
+    G.Enum.EncounterLootDropRollState = {
+        NeedMainSpec = 0, NeedOffSpec = 1, Transmog = 2, Greed = 3, NoRoll = 4, Pass = 5,
+    }
+    local function copyTable(value)
+        if type(value) ~= "table" then return value end -- a secret is no table and passes through whole
+        local out = {}
+        for k, v in pairs(value) do out[k] = copyTable(v) end
+        return out
+    end
+    -- W.drops["<encounterID>:<lootListKey>"] is the drop as the game keeps it, an EncounterLootDropInfo:
+    --   { lootListKey, itemHyperlink, playerRollState, currentLeader, isTied, winner, allPassed,
+    --     rollInfos = { { playerName, playerGUID, playerClass, isSelf, state, isWinner, roll }, ... },
+    --     startTime, duration }
+    -- The game's own times are milliseconds on its clock. W.historyTime is what
+    -- C_LootHistory.GetLootHistoryTime() answers; until a test sets it, it is the clock in milliseconds.
+    -- W.setDrop(encounterID, lootListKey, info) stores a copy of `info` and says
+    -- LOOT_HISTORY_UPDATE_DROP, as the game does at every choice and at the end; nil takes the drop away.
+    W.drops = {}
+    W.historyTime = nil
+    function W.setDrop(encounterID, lootListKey, info)
+        W.drops[encounterID .. ":" .. lootListKey] = copyTable(info)
+        W.fire("LOOT_HISTORY_UPDATE_DROP", encounterID, lootListKey)
+    end
+    G.C_LootHistory = {
+        -- SecretArguments = "AllowedWhenUntainted": the game refuses a secret from an addon. A fresh table
+        -- on every call, as in the client; nothing for a drop it does not know.
+        GetSortedInfoForDrop = function(encounterID, lootListKey)
+            if isSecret(encounterID) or isSecret(lootListKey) then
+                error("C_LootHistory.GetSortedInfoForDrop: a secret argument", 2)
+            end
+            if type(encounterID) ~= "number" or type(lootListKey) ~= "number" then
+                error("Usage: C_LootHistory.GetSortedInfoForDrop(encounterID, lootListKey)", 2)
+            end
+            return copyTable(W.drops[encounterID .. ":" .. lootListKey])
+        end,
+        GetLootHistoryTime = function() return W.historyTime or W.clock * 1000 end,
+    }
+
     -- EllesmereUI stand-in (only when a test asks for it).
     function W.installEUI(o)
         o = o or {}
