@@ -57,7 +57,7 @@
     - "choosing" and "not in this roll" #6f7277;
   - **text:** #f8f8f8, dim #cacccf, muted #a2a5a9, faint #6f7277;
   - **BiS gold:** #ffd100;
-  - **item quality:** text lifted to 4.5:1 on the panel, with the icon edge in `ITEM_QUALITY_COLORS`;
+  - **item quality:** text is the quality colour lifted in OKLab lightness, keeping hue and chroma (`ns.Color.Shift`), until it reads at 5.5:1 on the panel. That gives rare #2f8dfc, about the mockup's #2b8cff, and epic #c35cff; uncommon, common and poor stay as they are. The icon edge stays the raw `ITEM_QUALITY_COLORS` (ruling R6);
   - **accent:** the class colour lifted to 4.5:1, or EllesmereUI's.
 - **Font sizes (px, EllesmereUI font):**
   - title 13.5 bold;

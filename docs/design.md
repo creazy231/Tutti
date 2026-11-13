@@ -231,6 +231,11 @@ The tokens are the Sotto / Polestar "EllesmereUI" scheme, read live from Ellesme
   - Also `winner`, `currentLeader`, `isTied`, `allPassed`, `playerRollState`, `startTime` and `duration`.
   - NeedOffSpec shows as Need.
   - Blizzard's tooltip code in `Blizzard_FrameXML/Mainline/LootHistory.lua` shows how to read it, including its "skip rolls in a weird state" rule for several copies of one item.
+- **Trash rolls are in the history too** (confirmed from the user's own data, 2026-11-13):
+  - NaowhForever_DungeonJournal stores what it reads from `C_LootHistory` in SavedVariables (`NaowhForever.lua`, `journalLoot`).
+  - For a recent dungeon run it holds full records for the boss items and for the trash green Sage's Sash of Intellect: "Maelis Ashvale,0,97,w,DRUID;Corvel Duskmantle,3,,,MAGE;…" (state 0 Need with 97 and the winner flag, state 3 Greed without a number).
+  - Two facts follow: `playerName` is the full name ("Maelis Ashvale"), and Greed rows have no number when a Need wins.
+  - Any roll the history never decides still ends by the timeout rule below.
 - **`RollOnLoot(rollID, type)`:** 0 Pass, 1 Need, 2 Greed, 4 Transmog.
   - On a soulbound item the game fires `CONFIRM_LOOT_ROLL`, which stays with Blizzard (its dialog then calls `ConfirmLootRoll`).
 - **`GROUP_ROSTER_UPDATE`:** keeps the group list and its order.
