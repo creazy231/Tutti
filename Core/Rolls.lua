@@ -43,12 +43,14 @@
 --  never decides ends 5 seconds (ENDED_GRACE) after its time is up (status "ended"); a decision that
 --  comes later still decides it, and CARD_DECIDED comes a second time for that card. A decided card is
 --  never decided again. An ended roll that has no drop is a candidate only for a decided drop whose time
---  is up, which a late decision always is, so a newer roll's drop never goes to it. A drop key that a card
---  has had, or that Tutti ignored because the drop was decided or out of time when it first saw it, is
---  remembered with the drop's start after the card is forgotten, until the game clears its history
---  (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is old news and is ignored, so an old drop never
---  takes a new roll. The same key with another readable start is a new drop (the game using its keys again
---  for a repeat kill) and is matched as usual.
+--  is up, which a late decision always is. For such a drop the candidates go by group, each group by the
+--  usual rules: the live rolls whose own time is up (in their grace), then the ended ones, and last the
+--  live rolls still running, whose own clock says the drop cannot be theirs; so a newer roll's drop never
+--  goes to an older ended card. A drop key that a card has had, or that Tutti ignored because the drop
+--  was decided or out of time when it first saw it, is remembered with the drop's start after the card
+--  is forgotten, until the game clears its history (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is
+--  old news and is ignored, so an old drop never takes a new roll. The same key with another readable
+--  start is a new drop (the game using its keys again for a repeat kill) and is matched as usual.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided | tied
@@ -388,20 +390,39 @@ local function dropFields(link, gone)
     }
 end
 
+-- Of `cards` (oldest first), the one whose pick is the player's state in a drop (no pick counts as still
+-- choosing), else the oldest; nil when there are none.
+local function fittest(cards, state)
+    for _, card in ipairs(cards) do
+        if state and (card.mine or "wait") == state then return card end
+    end
+    return cards[1]
+end
+
 -- The card of the player's roll that a drop belongs to: of the cards with a roll and no drop that show
 -- the item (the live ones; and the ended ones when the drop is a late decision, that is decided and out
--- of time, as an ended roll's always is), the one whose pick is the player's state in the drop (no pick
--- counts as still choosing), else the oldest. Nil when there is none.
+-- of time, as an ended roll's always is), the one whose pick is the player's state in the drop, else the
+-- oldest. A late decision is a finished roll's result, so its candidates go by group first, each group by
+-- those rules: the live rolls whose own time is up (in their grace), then the ended ones, and last the
+-- live rolls still running, whose own clock says the drop cannot be theirs. Nil when there is none.
 local function rollOfDrop(info, link, isLate)
     local candidates = showing(link, ns.Items.ID(link), function(card)
         return card.rollID ~= nil and card.dropKey == nil
             and (card.status == "live" or (isLate and card.status == "ended"))
     end)
     local state = stateOf(info.playerRollState)
+    if not isLate then return fittest(candidates, state) end
+    local due, ended, running = {}, {}, {}
     for _, card in ipairs(candidates) do
-        if state and (card.mine or "wait") == state then return card end
+        local group = running
+        if card.status == "ended" then
+            group = ended
+        elseif Rolls.TimeLeft(card) == 0 then
+            group = due
+        end
+        group[#group + 1] = card
     end
-    return candidates[1]
+    return fittest(due, state) or fittest(ended, state) or fittest(running, state)
 end
 
 -- A drop of the history has news. The card that has the drop takes it. A drop no card has yet goes to
