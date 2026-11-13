@@ -52,6 +52,32 @@ T.it("Clear gives a value of the type asked for in the clear, else nil", functio
     T.eq(ns.Clear("Orlen", "string"), "Orlen", "and the answer follows ns.IsSecret as it changes")
 end)
 
+T.it("Text gives a non-empty string in the clear, else nil", function()
+    local G, W, ns = T.load()
+    T.eq(ns.Text("Orlen"), "Orlen")
+    T.eq(ns.Text("Brisé Tidewater"), "Brisé Tidewater")
+    T.eq(ns.Text(" "), " ", "a space is not nothing")
+    T.eq(ns.Text(""), nil, "an empty string is nothing")
+    T.eq(ns.Text(5), nil, "a number is no string")
+    T.eq(ns.Text({}), nil)
+    T.eq(ns.Text(true), nil)
+    T.eq(ns.Text(nil), nil)
+    T.eq(ns.Text(T.secret("Orlen")), nil, "a secret string")
+    -- It asks ns.IsSecret each time, as Clear does, so a test can stand in for the game.
+    local hidden = {}
+    ns.IsSecret = function(...)
+        for i = 1, select("#", ...) do
+            if hidden[(select(i, ...))] then return true end
+        end
+        return false
+    end
+    hidden["Orlen"] = true
+    T.eq(ns.Text("Orlen"), nil, "a string ns.IsSecret calls secret")
+    T.eq(ns.Text("Corvel"), "Corvel")
+    hidden["Orlen"] = nil
+    T.eq(ns.Text("Orlen"), "Orlen")
+end)
+
 T.it("On runs handlers for game events and Off removes them", function()
     local G, W, ns = T.load()
     local got = {}

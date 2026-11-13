@@ -20,12 +20,7 @@ local MAX_PARTY = 4 -- party1..party4; the player is not among them
 
 local members, byGUID, raid = {}, {}, false
 
--- A non-empty string the game gave in the clear, else nil.
-local function readable(value)
-    value = ns.Clear(value, "string")
-    if value == "" then return nil end
-    return value
-end
+local readable = ns.Text -- a non-empty string the game gave in the clear, else nil
 
 -- The first word of a name. Forever names are a first name and a surname ("Orlen Brightmoor"),
 -- and its chat box takes them as "Orlen-Brightmoor" too. Not a readable string: "".

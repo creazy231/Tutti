@@ -18,8 +18,8 @@ ns.L = setmetatable({}, { __index = function(_, k) return k end })
 
 -------------------------------------------------------------------------------
 --  Secret values (12.x engine): never compare, index or measure one. Everything the game hands over
---  (an event payload, an API result, a field of either) goes through ns.Clear before it is compared,
---  indexed or stored.
+--  (an event payload, an API result, a field of either) goes through ns.Clear (ns.Text for a non-empty
+--  string) before it is compared, indexed or stored.
 -------------------------------------------------------------------------------
 local issecretvalue = issecretvalue
 local hasanysecretvalues = hasanysecretvalues
@@ -39,6 +39,14 @@ end
 -- type check alone is not a guard. It asks ns.IsSecret each time, so a test can stand in for the game.
 function ns.Clear(value, kind)
     if ns.IsSecret(value) or type(value) ~= kind then return nil end
+    return value
+end
+
+-- A readable non-empty string, else nil: ns.Clear as a string, without the empty one. It asks ns.IsSecret
+-- each time, as ns.Clear does.
+function ns.Text(value)
+    value = ns.Clear(value, "string")
+    if value == "" then return nil end
     return value
 end
 

@@ -47,11 +47,12 @@
 --  is ignored, so an old drop sent again never takes a new roll.
 --  Messages:
 --    "CARD_ADDED", card
---    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided
+--    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided | tied
 --                                      picks: [guid] = "state" | "roll", for the picks that are new or
 --                                      changed: "state" for a new pick or another state, "roll" when
 --                                      only the number is new or different. decided: this message
---                                      is the card's decision (or its end).
+--                                      is the card's decision (or its end). tied: the game's tie flag
+--                                      changed (card.tied says how it is now).
 --    "CARD_DECIDED", card              a card's result: a decision, or the end of a roll nobody decided;
 --                                      once more for a card that ended and is decided later
 --    "CARD_REMOVED", card
@@ -90,12 +91,7 @@ local lastID = 0
 -- A value of the given type that the game gave in the clear, else nil (the guard of Core/Init.lua).
 local clear = ns.Clear
 
--- A non-empty string the game gave in the clear, else nil.
-local function text(value)
-    value = clear(value, "string")
-    if value == "" then return nil end
-    return value
-end
+local text = ns.Text -- a non-empty string the game gave in the clear, else nil
 
 -- A yes/no from the game. Anything unreadable is a no: Need and Greed are only offered when the
 -- game plainly says they are open, and Pass never depends on it.
@@ -320,13 +316,20 @@ end
 -------------------------------------------------------------------------------
 --  The loot history: the group's side of a roll
 -------------------------------------------------------------------------------
--- Takes a drop's picks onto the card, by GUID (an entry that cannot be read, or has no readable GUID,
--- is skipped; a field that cannot be read is left out, and a pick keeps the state it had). Gives
--- { [guid] = "state" | "roll" } for the picks that are new or different, nil when there are none.
-local function readPicks(card, info)
-    local entries = clear(info.rollInfos, "table")
+-- Did the game give this field of an entry: a value of that type, or nothing at all? A secret is not
+-- given.
+local function given(value, kind)
+    return not ns.IsSecret(value) and (value == nil or type(value) == kind)
+end
+
+-- Takes a drop's picks (the readable list of its rollInfos) onto the card, by GUID. An entry that cannot
+-- be read, or has no readable GUID, is skipped. A field the game keeps secret leaves what the pick had
+-- (its state, name, class, number and isSelf); a number the game leaves out is none, since it takes a
+-- Greed's number away when a Need wins. Gives { [guid] = "state" | "roll" } for the picks that are new
+-- or different, nil when there are none.
+local function readPicks(card, entries)
     local marks
-    for i = 1, entries and #entries or 0 do
+    for i = 1, #entries do
         local entry = clear(entries[i], "table")
         local guid = entry and text(entry.playerGUID)
         if guid then
@@ -334,10 +337,11 @@ local function readPicks(card, info)
             local oldState, oldRoll = pick and pick.state, pick and pick.roll
             pick = pick or {}
             pick.state = stateOf(entry.state) or pick.state or "wait"
-            pick.roll = clear(entry.roll, "number")
+            if given(entry.roll, "number") then pick.roll = entry.roll end
             pick.name = text(entry.playerName) or pick.name
             pick.class = text(entry.playerClass) or pick.class
-            pick.isSelf = yes(entry.isSelf)
+            if given(entry.isSelf, "boolean") then pick.isSelf = entry.isSelf == true end
+            pick.isSelf = pick.isSelf == true
             pick.order = i
             card.picks[guid] = pick
             local mark = (pick.state ~= oldState and "state") or (pick.roll ~= oldRoll and "roll") or nil
@@ -433,15 +437,23 @@ local function onDrop(encounterID, lootListKey)
         end
     end
 
-    local firstSight = not card.history
-    local changes = { picks = readPicks(card, info) }
-    card.history = true
-    card.tied = yes(info.isTied)
+    -- The card has the history once it has read who is in the roll; a list nobody can read changes nothing.
+    local entries = clear(info.rollInfos, "table")
+    local gained = entries ~= nil and not card.history
+    local changes = {}
+    if entries then
+        changes.picks = readPicks(card, entries)
+        card.history = true
+    end
+    local tied = yes(info.isTied)
+    if tied ~= card.tied then
+        card.tied, changes.tied = tied, true
+    end
     if card.status ~= "decided" and (winnerGUID or allPassed) then
         decide(card, winnerGUID, allPassed)
         changes.decided = true
     end
-    if firstSight or next(changes) then changed(card, changes) end
+    if gained or next(changes) then changed(card, changes) end
 end
 
 -------------------------------------------------------------------------------

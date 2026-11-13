@@ -178,7 +178,7 @@ T.it("every history state maps", function()
     -- A number the game has no state for leaves what was.
     W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, 42), rollInfo(KESTREL, 42) }))
     T.eq(ns.Rolls.Rows(card)[1].state, "need", "a state this client does not know changes nothing")
-    T.eq(ns.Rolls.Rows(card)[4].state, "wait", "and one that is new is choosing")
+    T.eq(ns.Rolls.Rows(card)[4].state, "wait", "and a pick that is still choosing stays so")
 end)
 
 T.it("a member missing from the history is out", function()
@@ -870,6 +870,104 @@ T.it("a rollInfo with a secret GUID is skipped, a secret field is left out", fun
     T.eq(ns.Rolls.Rows(card)[4].state, "pass", "a state that cannot be read leaves the one that was")
 end)
 
+T.it("a secret roll or isSelf keeps what the pick knew, a missing roll does not", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    local hidden = withSecrets(ns)
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local changed = listen(ns, "CARD_CHANGED")
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec, 73), rollInfo(BRISE, ST.Greed, 45), rollInfo(AYLA, ST.Greed, 31),
+    }))
+    T.eq(column(ns.Rolls.Rows(card), "roll"), "73,45,nil,nil,31")
+    T.eq(card.picks[AYLA[2]].isSelf, true)
+
+    -- The game keeps a number secret in a later update (a plain 88 plays one, a userdata secret is one),
+    -- and isSelf too: the picks keep what they had, and the update says nothing about them.
+    hidden[88] = true
+    local mine = rollInfo(AYLA, ST.Greed, 31)
+    mine.isSelf = T.secret(true)
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec, 88), { playerName = BRISE[1], playerGUID = BRISE[2], playerClass = BRISE[3],
+            isSelf = false, state = ST.Greed, roll = T.secret(46), isWinner = false },
+        mine, rollInfo(CORVEL, ST.Pass),
+    }))
+    T.eq(column(ns.Rolls.Rows(card), "roll"), "73,45,nil,nil,31", "a secret number leaves the number the pick had")
+    T.eq(card.picks[AYLA[2]].isSelf, true, "a secret isSelf leaves the one it had")
+    T.eq(#changed, 2)
+    local picks = changed[2].changes.picks
+    T.eq(size(picks), 1, "the update changed one pick, the new one")
+    T.eq(picks[CORVEL[2]], "state")
+    hidden[88] = nil
+    -- The same number in the clear is a number.
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec, 88), rollInfo(BRISE, ST.Greed, 45), rollInfo(AYLA, ST.Greed, 31),
+        rollInfo(CORVEL, ST.Pass),
+    }))
+    T.eq(ns.Rolls.Rows(card)[1].roll, 88)
+    T.eq(changed[3].changes.picks[ORLEN[2]], "roll")
+
+    -- A number the game leaves out is none: it takes a Greed's number away when a Need wins.
+    W.setDrop(9, 7, dropInfo(G, W, {
+        rollInfo(ORLEN, ST.NeedMainSpec, 88), rollInfo(BRISE, ST.Greed), rollInfo(AYLA, ST.Greed),
+        rollInfo(CORVEL, ST.Pass),
+    }))
+    T.eq(column(ns.Rolls.Rows(card), "roll"), "88,nil,nil,nil,nil", "a roll that is gone is gone")
+    T.eq(changed[4].changes.picks[BRISE[2]], "roll")
+    T.eq(changed[4].changes.picks[AYLA[2]], "roll")
+    -- And isSelf in the clear is taken as it is.
+    mine = rollInfo(AYLA, ST.Greed)
+    mine.isSelf = false
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec, 88), mine }))
+    T.eq(card.picks[AYLA[2]].isSelf, false)
+end)
+
+T.it("a secret rollInfos leaves the rows as they were", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local added, changed = listen(ns, "CARD_ADDED"), listen(ns, "CARD_CHANGED")
+    -- First sight of the drop, with a list nobody can read: it is the card's drop, but the history has not
+    -- told who is in the roll, so nobody is out.
+    for _, bad in ipairs({ T.secret({}), "list", 5, true }) do
+        local info = dropInfo(G, W, nil)
+        info.rollInfos = bad
+        W.setDrop(9, 7, info)
+    end
+    local noList = dropInfo(G, W, nil)
+    noList.rollInfos = nil
+    W.setDrop(9, 7, noList)
+    T.eq(card.dropKey, "9:7")
+    T.eq(card.history, false, "the history has not been read")
+    T.eq(column(ns.Rolls.Rows(card), "state"), "wait,wait,wait,wait,wait", "so the rows are as they were")
+    T.eq(#changed, 0, "and nothing was announced")
+    -- A list that can be read changes them.
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(AYLA, ST.NoRoll) }))
+    T.eq(card.history, true)
+    T.eq(column(ns.Rolls.Rows(card), "state"), "need,out,out,out,wait")
+    T.eq(#changed, 1)
+    -- And one that cannot, afterwards, leaves them as they are.
+    local secret = dropInfo(G, W, nil)
+    secret.rollInfos = T.secret({})
+    W.setDrop(9, 7, secret)
+    T.eq(card.history, true)
+    T.eq(column(ns.Rolls.Rows(card), "state"), "need,out,out,out,wait")
+    T.eq(#changed, 1)
+
+    -- A drop nobody has a card for, with a list nobody can read, still makes a card (the item is known).
+    local other = dropInfo(G, W, nil, { lootListKey = 8, itemHyperlink = W.itemLink(AXE + 1, "Other axe") })
+    other.rollInfos = T.secret({})
+    W.setDrop(9, 8, other)
+    local made = ns.Rolls.Cards()[2]
+    T.eq(#added, 1)
+    T.eq(made.dropKey, "9:8")
+    T.eq(made.history, false)
+    T.eq(column(ns.Rolls.Rows(made), "state"), "wait,wait,wait,wait,wait",
+        "the history has not said who is in it: nobody is out yet, the player included")
+end)
+
 T.it("every value of a drop passes ns.IsSecret first, not just a type check", function()
     local G, W, ns = T.load()
     local ST = G.Enum.EncounterLootDropRollState
@@ -1282,6 +1380,40 @@ T.it("a tie is the game's word", function()
     T.eq(card.status, "live", "a tie is no winner")
     W.setDrop(9, 7, dropInfo(G, W, rolls, { isTied = false }))
     T.eq(card.tied, false)
+end)
+
+T.it("a change of tied alone is announced", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local changed = listen(ns, "CARD_CHANGED")
+    local rolls = { rollInfo(ORLEN, ST.NeedMainSpec, 50), rollInfo(AYLA, ST.NeedMainSpec, 50) }
+    W.setDrop(9, 7, dropInfo(G, W, rolls, { isTied = false }))
+    T.eq(#changed, 1, "the first sight")
+    T.eq(changed[1].changes.tied, nil, "not tied: nothing to say about it")
+    W.setDrop(9, 7, dropInfo(G, W, rolls, { isTied = true }))
+    T.eq(#changed, 2, "a tie alone is news")
+    T.eq(changed[2].changes.tied, true)
+    T.eq(changed[2].changes.picks, nil, "no pick changed")
+    T.eq(card.tied, true)
+    W.setDrop(9, 7, dropInfo(G, W, rolls, { isTied = true }))
+    T.eq(#changed, 2, "the same again is not")
+    W.setDrop(9, 7, dropInfo(G, W, rolls, { isTied = false }))
+    T.eq(#changed, 3, "the tie going away is news too")
+    T.eq(changed[3].changes.tied, true, "the key says tied changed, not that it is on")
+    T.eq(card.tied, false)
+    -- With a pick that changed, one message says both.
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec, 50), rollInfo(AYLA, ST.NeedMainSpec, 51) },
+        { isTied = true }))
+    T.eq(#changed, 4)
+    T.eq(changed[4].changes.tied, true)
+    T.eq(changed[4].changes.picks[AYLA[2]], "roll")
+    -- A card that first hears of its drop already tied.
+    local other = newCard(W, ns, 8, otherSpec(W))
+    W.setDrop(9, 8, dropInfo(G, W, rolls, { lootListKey = 8, itemHyperlink = other.link, isTied = true }))
+    T.eq(other.tied, true)
+    T.eq(changed[5].changes.tied, true)
 end)
 
 T.it("an update that says nothing new says nothing", function()

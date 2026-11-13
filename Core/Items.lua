@@ -27,12 +27,7 @@ local ARMOR_ALONE = { [6] = "Shield", [7] = "Libram", [8] = "Idol", [9] = "Totem
 local CLASS_WEAPON, CLASS_ARMOR = 2, 4
 local SUBCLASS_MISC = 0
 
--- A non-empty string the game gave in the clear, else nil.
-local function text(value)
-    value = ns.Clear(value, "string")
-    if value == "" then return nil end
-    return value
-end
+local text = ns.Text -- a non-empty string the game gave in the clear, else nil
 
 function Items.ID(link)
     link = text(link)
