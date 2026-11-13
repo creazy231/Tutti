@@ -555,15 +555,16 @@ end)
 
 T.it("an ended card that is decided later shows the winner with the wash and the crown (R21)", function()
     local G, W, ns, window = setup()
+    local began = G.C_LootHistory.GetLootHistoryTime() -- the roll's drop begins with it, on the history's clock
     local view, card = roll(W, ns, window)
     view.buttons.greed:Click()
     W.advance(66)
     T.eq(card.status, "ended")
     T.eq(subtitle(W, view), "Roll ended")
     T.eq(column(view, function(r) return r.crown:IsShown() and "crown" or "-" end), "-,-,-,-,-")
-    W.setDrop(9, 7, decided(G, W, {
-        pick(G, ORLEN, "NeedMainSpec", 19, true), pick(G, AYLA, "Greed"),
-    }, ORLEN, 19))
+    -- The history names the winner late: the roll's own drop, whose minute is up by now.
+    W.setDrop(9, 7, drop(G, W, { pick(G, ORLEN, "NeedMainSpec", 19, true), pick(G, AYLA, "Greed") },
+        { winner = pick(G, ORLEN, "NeedMainSpec", 19, true), startTime = began }))
     T.eq(card.status, "decided")
     T.eq(subtitle(W, view), "Orlen won · Need 19")
     local orlen = rowsOf(view)[1]
