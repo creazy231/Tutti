@@ -135,32 +135,49 @@ T.it("pick colours", function()
     T.eq(Th.Hex("need"), "ff6bd999", "a pick colour is a palette name too")
 end)
 
-T.it("quality text reads at 4.5:1 and the edge stays raw", function()
+T.it("quality text reads at 5.5:1 on the window background and the edge stays raw", function()
     local G, W, ns = T.load()
     local Th, P = ns.Theme, ns.Theme.P
     for q = 0, 8 do
-        T.ok(ns.Color.Contrast({ Th.Quality(q) }, P.panel) >= 4.5, "quality " .. q .. " reads on the panel")
+        T.ok(ns.Color.Contrast({ Th.Quality(q) }, P.bg) >= 5.5, "quality " .. q .. " reads on the window background")
         local c = G.ITEM_QUALITY_COLORS[q]
         local r, g, b = Th.QualityEdge(q)
         T.eq(r, c.r, "edge red " .. q)
         T.eq(g, c.g, "edge green " .. q)
         T.eq(b, c.b, "edge blue " .. q)
     end
-    local rare = G.ITEM_QUALITY_COLORS[3]
-    local _, g, b = Th.Quality(3)
-    T.ok(g > rare.g and b > rare.b, "rare blue is lifted toward the text colour")
-    T.color({ Th.Quality(1) }, "ffffff", "a colour that already reads is left alone")
 end)
 
-T.it("quality text is lifted again when the panel colour changes", function()
+T.it("quality text keeps its hue, is brightened only as far as it must be, and leaves legible colours alone", function()
+    local G, W, ns = T.load()
+    local Th, P = ns.Theme, ns.Theme.P
+    -- Brightened in OKLab lightness with chroma kept, on #141414 (the window background, not
+    -- the panel's #191919): the approved mockup's rare blue (#2b8cff) and an epic purple.
+    T.color({ Th.Quality(3) }, "2f8dfc", "rare")
+    T.color({ Th.Quality(4) }, "c35cff", "epic")
+    for _, q in ipairs({ 3, 4 }) do
+        local ratio = ns.Color.Contrast({ Th.Quality(q) }, P.bg)
+        T.ok(ratio >= 5.5 and ratio < 5.6, "quality " .. q .. " is brightened to 5.5:1 and no further, got " .. ratio)
+    end
+    T.color({ Th.Quality(0) }, "9d9d9d", "poor")
+    T.color({ Th.Quality(1) }, "ffffff", "common")
+    T.color({ Th.Quality(2) }, "1eff00", "uncommon")
+    for _, q in ipairs({ 0, 1, 2, 5, 6, 7, 8 }) do
+        local c = G.ITEM_QUALITY_COLORS[q]
+        local r, g, b = Th.Quality(q)
+        T.ok(r == c.r and g == c.g and b == c.b, "quality " .. q .. " already reads, so it is exactly the game's colour")
+    end
+end)
+
+T.it("quality text is lifted again when the window background changes", function()
     local G, W, ns = T.load({ eui = { panel = { 0.08, 0.08, 0.08, 0.92 } } })
     local Th, P = ns.Theme, ns.Theme.P
-    local dark = { Th.Quality(3) }                  -- lifted for the dark panel, and cached
-    W.euiChange({ panel = { 0.3, 0.3, 0.3, 1 } })   -- a much lighter panel
-    T.ok(ns.Color.Contrast(dark, P.panel) < 4.5, "the old lift no longer reads on the lighter panel")
+    local dark = { Th.Quality(3) }                  -- lifted for the dark background, and cached
+    W.euiChange({ panel = { 0.2, 0.2, 0.2, 1 } })   -- a lighter one
+    T.ok(ns.Color.Contrast(dark, P.bg) < 5.5, "the old lift no longer reads on the lighter background")
     local light = { Th.Quality(3) }
-    T.ok(ns.Color.Contrast(light, P.panel) >= 4.5, "the new lift does")
-    T.ok(light[2] > dark[2], "and sits closer to the text colour")
+    T.ok(ns.Color.Contrast(light, P.bg) >= 5.5, "the new lift does")
+    T.ok(light[2] > dark[2], "and is brighter")
 end)
 
 T.it("an unknown, missing or secret quality reads as Common", function()

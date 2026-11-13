@@ -5,9 +5,10 @@
 --  sky +0.09), the text ladder is Polestar's graphite one, hairlines and
 --  washes are white at low alpha. The accent is the player's class colour
 --  (lifted until it reads at 4.5:1 on the panel) or EllesmereUI's accent.
---  The picks (Need, Greed, Pass, Transmog) have colours of their own, and an
---  item's quality is lifted like the accent when it is text while its icon
---  edge keeps the game's colour.
+--  The picks (Need, Greed, Pass, Transmog) have colours of their own. An item's
+--  quality as text is brightened in OKLab lightness, hue and chroma kept, until
+--  it reads at 5.5:1 on the window background (not the accent's 4.5:1 mix toward
+--  the text colour); its icon edge keeps the game's colour.
 --  EllesmereUI is read only through its skinning API (RegisterSkin getters,
 --  OnLooksChanged); without it the same palette comes from EUI's defaults.
 -------------------------------------------------------------------------------
@@ -96,13 +97,30 @@ function Th.QualityEdge(q)
     return 1, 1, 1
 end
 
--- An item quality as text: its colour lifted until it reads at 4.5:1 on the panel. -> r, g, b
+-- The colour brightened in OKLab lightness (Color.Shift keeps hue and chroma), in steps of
+-- 0.0025, until it reads at 5.5:1 on `ground`. A colour that already reads is returned as it
+-- is. The loop is bounded: 400 steps reach full lightness. -> r, g, b
+local QUALITY_RATIO, LIGHTNESS_STEP, LIGHTNESS_STEPS = 5.5, 0.0025, 400
+
+local function readableOn(ground, r, g, b)
+    local raw = { r, g, b }
+    if ns.Color.Contrast(raw, ground) >= QUALITY_RATIO then return r, g, b end
+    local c = raw
+    for i = 1, LIGHTNESS_STEPS do
+        c = ns.Color.Shift(raw, i * LIGHTNESS_STEP)
+        if ns.Color.Contrast(c, ground) >= QUALITY_RATIO then break end
+    end
+    return c[1], c[2], c[3]
+end
+
+-- An item quality as text: its colour brightened until it reads at 5.5:1 on the window
+-- background (P.bg, EllesmereUI's panel colour), cached per quality. -> r, g, b
 function Th.Quality(q)
     q = knownQuality(q)
     local cached = qualityCache[q]
     if not cached then
         local r, g, b = Th.QualityEdge(q)
-        r, g, b = ns.Color.Lift(P.panel, P.text, { r, g, b }, 4.5)
+        r, g, b = readableOn(P.bg, r, g, b)
         cached = { r, g, b }
         qualityCache[q] = cached
     end
@@ -156,7 +174,8 @@ function Th.Refresh()
     P.footer[4], P.panelAlt[4], P.sky[4] = 1, 1, 1
     for name, c in pairs(FIXED) do P[name] = copy(c) end
 
-    -- Everything lifted against the panel is lifted again against the new one.
+    -- Class colours (lifted on the panel) and item qualities (brightened on the window
+    -- background) are worked out again for the new grounds.
     for k in pairs(classCache) do classCache[k] = nil end
     for k in pairs(qualityCache) do qualityCache[k] = nil end
     P.accent = resolveAccent()
