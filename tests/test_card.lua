@@ -62,8 +62,18 @@ local function decided(G, W, picks, who, roll)
 end
 
 -- A client with the axe in its item cache and the party grouped, and a 300 px wide frame where the window
--- sits. opts go to T.load.
+-- sits. opts go to T.load. The addon is loaded up to the card and no further: the window shows every card in a view
+-- of its own, and a second view of the same card would play every effect twice; what comes after the window may
+-- lean on it.
 local function setup(opts)
+    opts = opts or {}
+    if not opts.only then
+        opts.only = {}
+        for _, file in ipairs(T.tocFiles()) do
+            opts.only[#opts.only + 1] = file
+            if file == "UI/Card.lua" then break end
+        end
+    end
     local G, W, ns = T.load(opts)
     W.items[AXE] = axeInfo()
     W.setGroup(party())
