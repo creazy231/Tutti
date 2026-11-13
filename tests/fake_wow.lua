@@ -63,7 +63,8 @@ function F.new(opts)
     W.reloads = 0
     W.guids = {}            -- guid -> { classLoc, classFile, raceLoc, raceFile, sex, name, realm }
     W.units = {}            -- unit token -> { name, realm, guid, class, classFile, race, raceFile, level }
-    W.group = nil           -- the group's member list, nil while solo
+    W.group = nil           -- the group's member list (W.setGroup), nil while solo
+    W.raid = false          -- the group is a raid
     W.instance = false
     W.focus = nil           -- the edit box that has the keyboard
     W.atlases = {}          -- atlas name -> info
@@ -652,6 +653,7 @@ function F.new(opts)
     G.RegionalUniqueNamesEnabled = function() return W.run end
     G.Constants = { CharacterNameSeparatorConsts = { CHARACTERNAME_SURNAME_SEPARATOR = " " } }
     local function nameParts(full)
+        if type(full) ~= "string" then return full end -- missing, or a secret the game withholds
         local first, last = full:match("^(%S+)%s+(.+)$")
         if first and W.run then return first, last end
         return full, nil
@@ -687,8 +689,40 @@ function F.new(opts)
     G.GetRealmName = function() return W.player.realm end
     G.GetNormalizedRealmName = function() return (W.player.realm:gsub("[%s%-]", "")) end
     G.IsInGroup = function() return W.group ~= nil end
-    G.IsInRaid = function() return false end
-    G.GetNumGroupMembers = function() return W.group and #W.group or 0 end
+    G.IsInRaid = function() return W.group ~= nil and W.raid end
+    G.GetNumGroupMembers = function()
+        if not W.group then return 0 end
+        return W.raid and #W.group or #W.group + 1 -- a party's list leaves the player out
+    end
+    -- W.setGroup(list, opts): the player's group as the game's units show it, then
+    -- GROUP_ROSTER_UPDATE (opts.silent leaves the event out). nil or {} is solo.
+    --   list  one { unit, name, classFile, guid [, class, realm, isPlayer] } per member.
+    --         A party lists party1..party4 and leaves the player out. With opts.raid it lists
+    --         raid1..raidN and the player is one of them: { unit = "raid3", isPlayer = true }
+    --         takes everything not given from W.player.
+    --         A field left nil is one the game does not answer; a secret (T.secret) is withheld.
+    function W.setGroup(list, opts)
+        opts = opts or {}
+        for unit in pairs(W.units) do
+            if unit:find("^party%d+$") or unit:find("^raid%d+$") then W.units[unit] = nil end
+        end
+        W.group, W.raid = nil, false
+        if list and #list > 0 then
+            W.group, W.raid = list, opts.raid == true
+            for _, e in ipairs(list) do
+                assert(type(e.unit) == "string", "setGroup: every member needs a unit")
+                local me = e.isPlayer == true and W.player or {}
+                local file = e.classFile
+                if file == nil then file = me.classFile end
+                local class = e.class or me.class
+                if class == nil and type(file) == "string" then class = file:sub(1, 1) .. file:sub(2):lower() end
+                local guid = e.guid
+                if guid == nil then guid = me.guid end
+                W.units[e.unit] = { name = e.name or me.name, realm = e.realm, guid = guid, class = class, classFile = file }
+            end
+        end
+        if not opts.silent then W.fire("GROUP_ROSTER_UPDATE") end
+    end
     G.IsInInstance = function() return W.instance == true, W.instance and "party" or "none" end
     G.InCombatLockdown = function() return W.combat end
     G.Ambiguate = function(name, ctx)

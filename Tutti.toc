@@ -15,3 +15,4 @@ Core\Init.lua
 Core\DB.lua
 Core\Color.lua
 Core\Theme.lua
+Core\Group.lua
