@@ -13,8 +13,16 @@
 --    ns.Rolls.Forget(card), ns.Rolls.ForgetDecided()
 --  A card: id, rollID|nil, link, itemID, name, icon, quality, count, bop, label|nil, ilvl|nil,
 --  canNeed, canGreed, canTransmog, reasonNeed|nil (text), startedAt (GetTime), duration (s),
---  mine|nil, over, history, picks, status ("live"|"decided"|"ended"), winner|nil, allPassed,
---  decidedAt|nil, demo|nil.
+--  mine|nil, pending|nil, over, history, picks, status ("live"|"decided"|"ended"), winner|nil,
+--  allPassed, decidedAt|nil, demo|nil.
+--  A bind confirmation: Need or Greed on a soulbound item first makes the game ask the player to
+--  confirm (CONFIRM_LOOT_ROLL, Blizzard's own dialog; Tutti leaves it alone and never confirms).
+--  The roll is not made until the dialog is accepted, so the pick waits as `pending` instead of
+--  `mine`: the card awaits the player again and its buttons work meanwhile, and a cancelled dialog,
+--  which fires nothing, leaves the card as it is. When the game takes the roll (CANCEL_LOOT_ROLL)
+--  the pending pick becomes `mine`. If the time runs out while the dialog is open the game says
+--  the same thing, so `mine` then shows a pick the game passed on; the loot history, which names
+--  the player's real pick, corrects it.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided
@@ -30,6 +38,8 @@ local DEFAULT_DURATION = 60 -- seconds, when the game names no time for a roll
 
 -- RollOnLoot's types.
 local ROLL_TYPE = { pass = 0, need = 1, greed = 2, transmog = 4 }
+-- The choice a type names, for the types a confirmation can be about (Pass is never confirmed).
+local CHOICE_OF = { [1] = "need", [2] = "greed", [4] = "transmog" }
 
 -- Why Need can be refused, when the client has no text for it. Only reason 1 is known to read
 -- like this; any other number gets the general sentence.
@@ -149,11 +159,30 @@ local function add(rollID, rollTime)
 end
 
 -- The player's part of a roll is over (chosen, or out of time). The card stays live: the group may
--- still be rolling.
+-- still be rolling. A pick that waited for a bind confirmation is the player's now: the game took
+-- the roll.
 local function finish(card)
     if card.over then return end
     card.over = true
-    changed(card, { over = true })
+    local changes = { over = true }
+    if card.pending then
+        card.mine, card.pending = card.pending, nil
+        changes.mine = true
+    end
+    changed(card, changes)
+end
+
+-- The game asks the player to confirm a roll (Need or Greed on a soulbound item) and Blizzard's
+-- dialog is up; the roll is not made until it is accepted. What the game is confirming, by its roll
+-- type (else the pick on the card), waits as `pending` and comes off `mine`, so the card awaits the
+-- player again, buttons and all. A cancelled dialog fires nothing and the card stays as it is.
+local function confirming(card, kind)
+    if card.over then return end
+    card.pending = CHOICE_OF[kind] or card.mine or card.pending
+    if card.mine ~= nil then
+        card.mine = nil
+        changed(card, { mine = true })
+    end
 end
 
 -- The item info of a card, asked again: it may have reached the client's cache since.
@@ -199,7 +228,9 @@ function Rolls.Pick(card, choice)
     local kind = ROLL_TYPE[choice]
     if not kind or not Rolls.AwaitsMe(card) or not offered(card, choice) then return false end
     -- The pick goes on the card first: the game ends the player's part (CANCEL_LOOT_ROLL) from
-    -- inside RollOnLoot, and whoever hears of that should already find the pick there.
+    -- inside RollOnLoot, and whoever hears of that should already find the pick there. A bind
+    -- confirmation takes it off again (see `confirming`).
+    card.pending = nil -- a new pick: whatever a confirmation the player cancelled left behind
     card.mine = choice
     if not card.demo and not ns.Safe(RollOnLoot, card.rollID, kind) then
         card.mine = nil -- the game never got it
@@ -257,6 +288,15 @@ end)
 ns.On("CANCEL_ALL_LOOT_ROLLS", function()
     for _, card in ipairs(Rolls.Cards()) do
         if card.rollID then finish(card) end
+    end
+end)
+
+ns.On("CONFIRM_LOOT_ROLL", function(_, rollID, rollType)
+    rollID = clear(rollID, "number")
+    if not rollID then return end
+    local kind = clear(rollType, "number")
+    for _, card in ipairs(Rolls.Cards()) do
+        if card.rollID == rollID then confirming(card, kind) end
     end
 end)
 
