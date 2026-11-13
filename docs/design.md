@@ -242,13 +242,7 @@ The tokens are the Sotto / Polestar "EllesmereUI" scheme, read live from Ellesme
 
 ### Matching a roll to its loot-history drop
 
-A roll (rollID) and a drop (encounterID, lootListKey) share the item link.
-
-- Match each new roll to the unmatched drop with the same link whose `startTime` is closest to the roll's start.
-- Several copies of one item in a single drop are matched in order: first roll to first drop.
-- Until a match exists, the card shows the group list with everyone "choosing", so it never waits on the history.
-- Drops already decided when Tutti loads (old encounters) are ignored.
-- A drop with no matching roll for the player gets a card without buttons.
+A roll (rollID) and a drop (encounterID, lootListKey) share the item link. A drop joins the player's roll card with the same link, else the same item; among several (copies of one item) it takes the card whose pick is the player's state in the drop, then the oldest, so copies are matched in order. A drop no roll card fits gets a card of its own, without buttons, unless it is decided already or its time is up (old encounters): then it is ignored. A roll that starts after its drop joins that card instead of making a second one. Until a drop is matched the card shows the group with everyone "choosing", so it never waits on the history, and a roll the history never decides ends 5 s after its time. A drop's age is read as Blizzard's own history window reads it (the history's clock minus `startTime`, against `duration`), never in seconds.
 
 ### Switching Blizzard's popups off
 
