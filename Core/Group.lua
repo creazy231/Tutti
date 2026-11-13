@@ -20,10 +20,10 @@ local MAX_PARTY = 4 -- party1..party4; the player is not among them
 
 local members, byGUID, raid = {}, {}, false
 
--- A non-empty string the game gave in the clear, else nil. A secret value must never be
--- compared, indexed or stored.
+-- A non-empty string the game gave in the clear, else nil.
 local function readable(value)
-    if ns.IsSecret(value) or type(value) ~= "string" or value == "" then return nil end
+    value = ns.Clear(value, "string")
+    if value == "" then return nil end
     return value
 end
 

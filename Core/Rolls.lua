@@ -50,7 +50,7 @@
 --                                      is the card's decision (or its end).
 --    "CARD_DECIDED", card              once per card: a decision, or the end of a roll nobody decided
 --    "CARD_REMOVED", card
---  Everything the game hands over passes ns.IsSecret and a type check before it is used.
+--  Everything the game hands over passes ns.Clear (ns.IsSecret and a type check) before it is used.
 -------------------------------------------------------------------------------
 local _, ns = ...
 local Rolls = {}
@@ -81,12 +81,10 @@ local lastID = 0
 -------------------------------------------------------------------------------
 --  Reading what the game says
 -------------------------------------------------------------------------------
--- A value of the given type that the game gave in the clear, else nil.
-local function clear(value, kind)
-    if ns.IsSecret(value) or type(value) ~= kind then return nil end
-    return value
-end
+-- A value of the given type that the game gave in the clear, else nil (the guard of Core/Init.lua).
+local clear = ns.Clear
 
+-- A non-empty string the game gave in the clear, else nil.
 local function text(value)
     value = clear(value, "string")
     if value == "" then return nil end
@@ -607,8 +605,8 @@ end)
 -- chosen on; a card is made for each one that has none.
 ns.On("PLAYER_ENTERING_WORLD", function()
     if type(GetActiveLootRollIDs) ~= "function" then return end
-    local ids = GetActiveLootRollIDs()
-    if ns.IsSecret(ids) or type(ids) ~= "table" then return end
+    local ids = clear(GetActiveLootRollIDs(), "table")
+    if not ids then return end
     for i = 1, #ids do
         local rollID = clear(ids[i], "number")
         if rollID then add(rollID) end

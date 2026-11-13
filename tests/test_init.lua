@@ -18,6 +18,40 @@ T.it("IsSecret spots a secret among plain values", function()
     T.no(ns.IsSecret("a", 1, nil, false), "plain values")
 end)
 
+T.it("Clear gives a value of the type asked for in the clear, else nil", function()
+    local G, W, ns = T.load()
+    local tbl = {}
+    T.eq(ns.Clear("Orlen", "string"), "Orlen")
+    T.eq(ns.Clear("", "string"), "", "an empty string is still a string: what to do with it is the caller's")
+    T.eq(ns.Clear(5, "number"), 5)
+    T.eq(ns.Clear(0, "number"), 0)
+    T.eq(ns.Clear(tbl, "table"), tbl)
+    T.eq(ns.Clear(true, "boolean"), true)
+    T.eq(ns.Clear(false, "boolean"), false, "a boolean in the clear is itself")
+    T.eq(ns.Clear(5, "string"), nil, "a number is no string")
+    T.eq(ns.Clear("5", "number"), nil, "a string is no number")
+    T.eq(ns.Clear(tbl, "string"), nil)
+    T.eq(ns.Clear(nil, "string"), nil)
+    T.eq(ns.Clear(T.secret("Orlen"), "string"), nil, "a secret string")
+    T.eq(ns.Clear(T.secret(5), "number"), nil, "a secret number")
+    T.eq(ns.Clear(T.secret({}), "table"), nil, "a secret table")
+    -- A secret string or number still has type "string" or "number" in the game, so a type check alone
+    -- lets it through. The guard asks ns.IsSecret each time it runs, so a test can stand in for the game.
+    local hidden = {}
+    ns.IsSecret = function(...)
+        for i = 1, select("#", ...) do
+            if hidden[(select(i, ...))] then return true end
+        end
+        return false
+    end
+    hidden["Orlen"], hidden[7] = true, true
+    T.eq(ns.Clear("Orlen", "string"), nil, "a string ns.IsSecret calls secret")
+    T.eq(ns.Clear(7, "number"), nil, "a number ns.IsSecret calls secret")
+    T.eq(ns.Clear("Brisé", "string"), "Brisé", "the same call on a value in the clear")
+    hidden["Orlen"] = nil
+    T.eq(ns.Clear("Orlen", "string"), "Orlen", "and the answer follows ns.IsSecret as it changes")
+end)
+
 T.it("On runs handlers for game events and Off removes them", function()
     local G, W, ns = T.load()
     local got = {}

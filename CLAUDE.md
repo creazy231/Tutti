@@ -19,7 +19,8 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
   - plain frames only, no secure templates; hooks only through `hooksecurefunc`; never assign
     to a Blizzard global or to a field of a Blizzard frame;
   - every event payload and API result goes through `ns.IsSecret` and a type check before it
-    is compared, indexed or stored;
+    is compared, indexed or stored: `ns.Clear(value, kind)` does both (the value when it is in the
+    clear and of that type, else nil), so do not write a copy of that guard;
   - every event and message handler runs through the protected dispatch (`ns.On`, `ns.Listen`);
   - EllesmereUI only through `EllesmereUI.RegisterSkin` getters (`GetPanelColor`,
     `GetAccentColor`, `GetFont`, `OnLooksChanged`): no EllesmereUI internals, no `EllesmereUIDB`.

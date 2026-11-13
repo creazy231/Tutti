@@ -27,10 +27,10 @@ local ARMOR_ALONE = { [6] = "Shield", [7] = "Libram", [8] = "Idol", [9] = "Totem
 local CLASS_WEAPON, CLASS_ARMOR = 2, 4
 local SUBCLASS_MISC = 0
 
--- A non-empty string the game gave in the clear, else nil. A secret value must never be
--- compared, indexed or stored.
+-- A non-empty string the game gave in the clear, else nil.
 local function text(value)
-    if ns.IsSecret(value) or type(value) ~= "string" or value == "" then return nil end
+    value = ns.Clear(value, "string")
+    if value == "" then return nil end
     return value
 end
 

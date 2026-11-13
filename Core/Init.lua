@@ -17,7 +17,9 @@ if ns.version:find("@", 1, true) then ns.version = "dev" end
 ns.L = setmetatable({}, { __index = function(_, k) return k end })
 
 -------------------------------------------------------------------------------
---  Secret values (12.x engine): never compare, index or measure one.
+--  Secret values (12.x engine): never compare, index or measure one. Everything the game hands over
+--  (an event payload, an API result, a field of either) goes through ns.Clear before it is compared,
+--  indexed or stored.
 -------------------------------------------------------------------------------
 local issecretvalue = issecretvalue
 local hasanysecretvalues = hasanysecretvalues
@@ -30,6 +32,14 @@ function ns.IsSecret(...)
         end
     end
     return false
+end
+
+-- The value when the game gave it in the clear and it has the type `kind` ("string", "number",
+-- "table", "boolean"), else nil. A secret string or number still has type "string" or "number", so a
+-- type check alone is not a guard. It asks ns.IsSecret each time, so a test can stand in for the game.
+function ns.Clear(value, kind)
+    if ns.IsSecret(value) or type(value) ~= kind then return nil end
+    return value
 end
 
 -------------------------------------------------------------------------------
