@@ -42,15 +42,16 @@
 --  A card is decided when the history names a winner or says everyone passed. A card the history
 --  never decides ends 5 seconds (ENDED_GRACE) after its time is up (status "ended"); a decision that
 --  comes later still decides it, and CARD_DECIDED comes a second time for that card. A decided card is
---  never decided again. An ended roll that has no drop is a candidate only for a decided drop whose time
---  is up, which a late decision always is. For such a drop the candidates go by group, each group by the
---  usual rules: the live rolls whose own time is up (in their grace), then the ended ones, and last the
---  live rolls still running, whose own clock says the drop cannot be theirs; so a newer roll's drop never
---  goes to an older ended card. A drop key that a card has had, or that Tutti ignored because the drop
---  was decided or out of time when it first saw it, is remembered with the drop's start after the card
---  is forgotten, until the game clears its history (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is
---  old news and is ignored, so an old drop never takes a new roll. The same key with another readable
---  start is a new drop (the game using its keys again for a repeat kill) and is matched as usual.
+--  never decided again. A decided drop whose time is up (an ended roll's late decision always is) goes
+--  first to a live roll with DUE_WINDOW seconds or less left on its own clock, then to an ended roll that
+--  has no drop, each by the usual rules; a roll with more time left is never a candidate, since its own
+--  clock says the drop cannot be its own. Any other drop, a decided one still inside its minute included,
+--  goes to the live rolls, whatever their time, and never to an ended one. A drop key that a card has had,
+--  or that Tutti ignored because the drop was decided or out of time when it first saw it, is remembered
+--  with the drop's start after the card is forgotten, until the game clears its history
+--  (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is old news and is ignored, so an old drop never
+--  takes a new roll. The same key with another readable start is a new drop (the game using its keys again
+--  for a repeat kill) and is matched as usual.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided | tied
@@ -70,6 +71,9 @@ ns.Rolls = Rolls
 
 local DEFAULT_DURATION = 60 -- seconds, when the game names no time for a roll, and for a card the history made
 local ENDED_GRACE = 5 -- seconds after a roll's time that the game may still say how it went
+-- Seconds a roll may still have left on its own clock and be the one a drop whose time is up belongs to; the
+-- slack also covers the roll's start reaching the client a moment after its drop began.
+local DUE_WINDOW = 2
 
 -- RollOnLoot's types.
 local ROLL_TYPE = { pass = 0, need = 1, greed = 2, transmog = 4 }
@@ -400,29 +404,26 @@ local function fittest(cards, state)
 end
 
 -- The card of the player's roll that a drop belongs to: of the cards with a roll and no drop that show
--- the item (the live ones; and the ended ones when the drop is a late decision, that is decided and out
--- of time, as an ended roll's always is), the one whose pick is the player's state in the drop, else the
--- oldest. A late decision is a finished roll's result, so its candidates go by group first, each group by
--- those rules: the live rolls whose own time is up (in their grace), then the ended ones, and last the
--- live rolls still running, whose own clock says the drop cannot be theirs. Nil when there is none.
+-- the item, the one whose pick is the player's state in the drop, else the oldest. For most drops the
+-- candidates are the live rolls. A drop that is decided and out of time (`isLate`) is a finished roll's
+-- result, so its candidates are the live rolls that are due, with DUE_WINDOW seconds or less left on their
+-- own clock, and then the ended ones, each group by those rules; a roll with more time left is never one:
+-- its own clock says the drop cannot be its own (an old drop sent again while it runs is not its result).
+-- Nil when there is none.
 local function rollOfDrop(info, link, isLate)
     local candidates = showing(link, ns.Items.ID(link), function(card)
-        return card.rollID ~= nil and card.dropKey == nil
-            and (card.status == "live" or (isLate and card.status == "ended"))
+        if card.rollID == nil or card.dropKey ~= nil then return false end
+        if not isLate then return card.status == "live" end
+        return card.status == "ended" or (card.status == "live" and Rolls.TimeLeft(card) <= DUE_WINDOW)
     end)
     local state = stateOf(info.playerRollState)
     if not isLate then return fittest(candidates, state) end
-    local due, ended, running = {}, {}, {}
+    local due, ended = {}, {}
     for _, card in ipairs(candidates) do
-        local group = running
-        if card.status == "ended" then
-            group = ended
-        elseif Rolls.TimeLeft(card) == 0 then
-            group = due
-        end
+        local group = card.status == "ended" and ended or due
         group[#group + 1] = card
     end
-    return fittest(due, state) or fittest(ended, state) or fittest(running, state)
+    return fittest(due, state) or fittest(ended, state)
 end
 
 -- A drop of the history has news. The card that has the drop takes it. A drop no card has yet goes to

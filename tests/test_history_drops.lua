@@ -1317,7 +1317,7 @@ T.it("an older ended card's late decision goes to it while a newer roll of the s
     T.eq(decided[1].card, older)
 end)
 
-T.it("a late drop's candidates go by group: in their grace, ended, running; inside a group the usual rules", function()
+T.it("a late drop's candidates go by group: due, then ended; inside a group the usual rules", function()
     local G, W, ns = T.load()
     local ST = G.Enum.EncounterLootDropRollState
     W.setGroup(party())
@@ -1333,7 +1333,7 @@ T.it("a late drop's candidates go by group: in their grace, ended, running; insi
     T.eq(a.status, "ended")
     T.eq(ns.Rolls.TimeLeft(b), 0, "b is in its grace")
     T.eq(ns.Rolls.TimeLeft(c), 0, "so is c")
-    T.ok(ns.Rolls.TimeLeft(d) > 0, "d is running")
+    T.ok(ns.Rolls.TimeLeft(d) > 2, "d is running")
     local function late(key, state) -- a decided drop whose minute is up, the player's state in it `state`
         return won(G, W, ORLEN, 70, nil, { lootListKey = key, playerRollState = state,
             startTime = G.C_LootHistory.GetLootHistoryTime() - 61000 })
@@ -1350,9 +1350,87 @@ T.it("a late drop's candidates go by group: in their grace, ended, running; insi
     T.eq(a.dropKey, "9:3", "ended, before a running roll")
     T.eq(d.dropKey, nil)
     T.eq(d.status, "live")
-    -- A running roll is the last resort, not out of the question.
+    -- A roll with more than 2 s left is no candidate at all: its own clock says the drop is not its own.
     W.setDrop(9, 4, late(4, ST.NoRoll))
-    T.eq(d.dropKey, "9:4", "a roll still running takes it only when nobody else can")
+    T.eq(d.dropKey, nil, "a roll that is still running never takes it")
+    T.eq(d.status, "live")
+    T.eq(ns.Rolls.AwaitsMe(d), true, "and keeps its buttons")
+end)
+
+T.it("an old decided drop seen for the first time never decides a running roll", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local live = newCard(W, ns, 7)
+    local began = G.C_LootHistory.GetLootHistoryTime() -- the roll's drop began with it
+    W.advance(20)
+    T.near(ns.Rolls.TimeLeft(live), 40, 0.01)
+    local changed = listen(ns, "CARD_CHANGED")
+    -- After a /reload the game sends old drops again; this one was decided ten minutes ago.
+    local old = won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began - 600000 })
+    W.setDrop(9, 1, old)
+    T.eq(live.status, "live", "a roll with 40 s left is not the one it decides")
+    T.eq(live.dropKey, nil)
+    T.eq(ns.Rolls.AwaitsMe(live), true, "and it keeps its buttons")
+    T.eq(#ns.Rolls.Cards(), 1, "the old drop made no card")
+    T.eq(#changed, 0)
+    -- The key is remembered: when the roll's own time comes and the game sends the old drop once more, it is
+    -- still old news.
+    W.advance(39) -- 1 s left
+    T.eq(ns.Rolls.TimeLeft(live), 1)
+    W.setDrop(9, 1, old)
+    T.eq(live.status, "live", "even though the roll is due now")
+    T.eq(live.dropKey, nil)
+    -- The roll's own decision is another drop.
+    W.advance(1)
+    W.setDrop(9, 2, won(G, W, BRISE, 61, nil, { lootListKey = 2, startTime = began }))
+    T.eq(live.status, "decided")
+    T.eq(live.dropKey, "9:2")
+    T.eq(live.winner, BRISE[2])
+end)
+
+T.it("a decision with 1 s left on the roll's own clock still finds it", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    -- The roll's start reached the client 1 s after its drop began: the drop's minute is up while the roll
+    -- shows 1 s.
+    local began = G.C_LootHistory.GetLootHistoryTime() - 1000
+    W.advance(59)
+    T.near(ns.Rolls.TimeLeft(card), 1, 0.01)
+    W.setDrop(9, 1, won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began }))
+    T.eq(card.status, "decided", "the 2 s of tolerance cover that")
+    T.eq(card.dropKey, "9:1")
+    T.eq(card.winner, ORLEN[2])
+end)
+
+T.it("a roll is a late drop's only with 2 s or less left on its own clock", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local function late(key) -- a decided drop whose minute is up
+        return won(G, W, ORLEN, 70, nil, { lootListKey = key,
+            startTime = G.C_LootHistory.GetLootHistoryTime() - 61000 })
+    end
+    W.advance(57) -- 3 s left
+    W.setDrop(9, 1, late(1))
+    T.eq(card.dropKey, nil, "with 3 s left its own clock says the drop is not its own")
+    T.eq(card.status, "live")
+    W.advance(1) -- 2 s left
+    W.setDrop(9, 2, late(2))
+    T.eq(card.dropKey, "9:2", "with 2 s left it is due")
+    T.eq(card.status, "decided")
+end)
+
+T.it("a decided drop that is not out of time still decides a running roll", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local live = newCard(W, ns, 7)
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    W.advance(20) -- 40 s left
+    -- Everyone chose within 20 s of the minute: the drop is decided and its time is not up.
+    W.setDrop(9, 1, won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began }))
+    T.eq(live.status, "decided", "a drop inside its minute is a running roll's, as before")
+    T.eq(live.dropKey, "9:1")
 end)
 
 T.it("a drop ignored on first sight is not taken by a roll when the game sends it again", function()
