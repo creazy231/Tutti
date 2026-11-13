@@ -728,7 +728,7 @@ function F.new(opts)
     -- GetInstanceInfo follow it. Inside, GetInstanceInfo answers W.instanceName; outside it answers the
     -- continent's name (W.continent) with the type "none", as the client does, so a caller that takes the
     -- name without asking whether the player is in an instance gets the continent. GetRealZoneText
-    -- answers W.zone, an instance's name inside one as well when a test sets it so.
+    -- answers W.zone (the client answers the instance's name inside one; a test that wants that sets it).
     W.zone, W.continent, W.instanceName = "Greymist Hollow", "Eastern Dunes", "Stonewatch Keep"
     G.GetRealZoneText = function() return W.zone end
     -- name, instanceType, difficultyID, difficultyName, maxPlayers, dynamicDifficulty, isDynamic,

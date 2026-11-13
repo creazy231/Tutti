@@ -40,6 +40,11 @@ local function rollInfo(who, state, roll, isWinner)
         state = state, roll = roll, isWinner = isWinner == true }
 end
 
+-- The player's own pick as a card keeps it in `picks`.
+local function aylaPick(state, roll)
+    return { state = state, roll = roll, name = AYLA[1], class = AYLA[3], isSelf = true }
+end
+
 -- An EncounterLootDropInfo for the axe as the game hands it out, started now and lasting a minute (its
 -- times are milliseconds). `rolls` are its rollInfos; `over` replaces or adds fields.
 local function dropInfo(G, W, rolls, over)
@@ -322,8 +327,8 @@ T.it("a decision that names a winner nobody lists is an ended roll", function()
     T.eq(e.allPassed, false)
     T.eq(e.ended, true, "one of winner, allPassed and ended always holds")
     -- A winner with a row is named.
-    ns.Fire("CARD_DECIDED", handCard(W, 2, { winner = "Player-1-00000001", allPassed = false,
-        picks = { ["Player-1-00000001"] = { state = "need", roll = 61, name = "Ayla Brightwind", class = "DRUID", isSelf = true } } }))
+    ns.Fire("CARD_DECIDED", handCard(W, 2, { winner = AYLA[2], allPassed = false,
+        picks = { [AYLA[2]] = aylaPick("need", 61) } }))
     e = ns.History.Entries()[1]
     T.eq(e.winner.name, "Ayla")
     T.eq(e.winner.roll, 61)
@@ -331,8 +336,8 @@ T.it("a decision that names a winner nobody lists is an ended roll", function()
     T.eq(e.rows[1].isWinner, true)
     T.eq(e.rows[1].isPlayer, true)
     -- A card that says both a winner and everyone passed is the winner's.
-    ns.Fire("CARD_DECIDED", handCard(W, 3, { winner = "Player-1-00000001", allPassed = true,
-        picks = { ["Player-1-00000001"] = { state = "need", roll = 61, name = "Ayla Brightwind", class = "DRUID", isSelf = true } } }))
+    ns.Fire("CARD_DECIDED", handCard(W, 3, { winner = AYLA[2], allPassed = true,
+        picks = { [AYLA[2]] = aylaPick("need", 61) } }))
     e = ns.History.Entries()[1]
     T.eq(e.winner.name, "Ayla")
     T.eq(e.allPassed, false, "exactly one of winner, allPassed and ended")
@@ -362,7 +367,7 @@ T.it("a late decision updates the card's entry instead of adding one", function(
     W.advance(30)
     W.zone = "Duskfall Reach"
     card.status, card.winner = "decided", AYLA[2]
-    card.picks[AYLA[2]] = { state = "need", roll = 61, name = AYLA[1], class = AYLA[3], isSelf = true }
+    card.picks[AYLA[2]] = aylaPick("need", 61)
     ns.Fire("CARD_DECIDED", card)
     entries = ns.History.Entries()
     T.eq(#entries, 2, "no second entry")

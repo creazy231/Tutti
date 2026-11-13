@@ -254,9 +254,15 @@ T.it("rank colour, else gold", function()
     s.rank = 1
     gold(badge(1))
     gold(badge(5))
-    for _, color in ipairs({ { r = 1, g = 1 }, { r = "1", g = 1, b = 0 }, { r = 2, g = 0, b = 0 }, { r = -0.5, g = 0, b = 0 },
-        { r = 1, g = 2, b = 0 }, { r = 1, g = -0.1, b = 0 }, { r = 1, g = 0, b = 2 }, { r = 1, g = 0, b = -0.5 },
-        { r = 1, g = 0.5, b = 0 / 0 }, { r = math.huge, g = 0, b = 0 }, "orange", 5, true, false }) do
+    local junk = {
+        { r = 1, g = 1 }, { r = "1", g = 1, b = 0 },                        -- a channel missing, one a string
+        { r = 2, g = 0, b = 0 }, { r = -0.5, g = 0, b = 0 },                -- red out of range, both ways
+        { r = 1, g = 2, b = 0 }, { r = 1, g = -0.1, b = 0 },                -- green
+        { r = 1, g = 0, b = 2 }, { r = 1, g = 0, b = -0.5 },                -- blue
+        { r = 1, g = 0.5, b = 0 / 0 }, { r = math.huge, g = 0, b = 0 },     -- not a number, not finite
+        "orange", 5, true, false,                                           -- not a table at all
+    }
+    for _, color in ipairs(junk) do
         s.color = color
         gold(badge(1))
     end
@@ -365,7 +371,8 @@ T.it("a table, function or colour that ns.IsSecret calls secret is never used", 
         T.color({ badge.r, badge.g, badge.b }, "ffd100", "and is gold")
         hidden[thing] = nil
     end
-    T.color({ ns.BiS.Badge(link).r, ns.BiS.Badge(link).g, ns.BiS.Badge(link).b }, "ff8000", "the colour in the clear is used")
+    local badge = ns.BiS.Badge(link)
+    T.color({ badge.r, badge.g, badge.b }, "ff8000", "the colour in the clear is used")
 end)
 
 T.it("NaowhForever is looked up when it is asked, not when Tutti loads", function()
