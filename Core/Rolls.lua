@@ -56,7 +56,7 @@ local _, ns = ...
 local Rolls = {}
 ns.Rolls = Rolls
 
-local DEFAULT_DURATION = 60 -- seconds, when the game names no time for a roll
+local DEFAULT_DURATION = 60 -- seconds, when the game names no time for a roll, and for a card the history made
 local ENDED_GRACE = 5 -- seconds after a roll's time that the game may still say how it went
 
 -- RollOnLoot's types.
@@ -343,30 +343,33 @@ local function readPicks(card, info)
     return marks
 end
 
--- How long a drop's roll lasts and how much of it has gone, in seconds, and whether its time is up.
--- The history keeps its times in milliseconds on the game's own clock. A drop that names no
--- readable duration is never out of time: the game does not say how long the roll lasts, so a minute.
-local function dropTiming(info)
+-- How much of a drop's roll has gone, as a share from 0 to 1, and whether its time is up. The three
+-- times are read the way Blizzard's own history window reads them (Blizzard_FrameXML/Mainline/
+-- LootHistory.lua:508-516): the history's clock minus the start, against the duration, and as a
+-- share of it. Nothing in Blizzard's code says what unit they are in, so they are never turned into
+-- seconds and never set against GetTime(); only the share reaches the card, which counts its own
+-- minute. A drop that names no readable duration has no age and is never out of time: the game does
+-- not say how long the roll lasts.
+local function dropAge(info)
     local startTime, duration = clear(info.startTime, "number"), clear(info.duration, "number")
+    if not (duration and duration > 0) then return 0, false end
     local now = type(C_LootHistory.GetLootHistoryTime) == "function"
         and clear(C_LootHistory.GetLootHistoryTime(), "number")
     local elapsed = (startTime and now) and math.max(now - startTime, 0) or 0
-    if duration and duration > 0 then
-        return duration / 1000, math.min(elapsed, duration) / 1000, elapsed >= duration
-    end
-    return DEFAULT_DURATION, math.min(elapsed / 1000, DEFAULT_DURATION), false
+    return math.min(elapsed / duration, 1), elapsed >= duration
 end
 
 -- The fields of a card for a drop the player has no roll on: the item from its link, nothing to
--- choose, so no buttons (`over`).
-local function dropFields(link, duration, elapsed)
+-- choose, so no buttons (`over`). Its countdown is a minute with `gone` (a share) of it used up.
+local function dropFields(link, gone)
     local name, icon, quality = itemFacts(link)
     local label, ilvl = ns.Items.Describe(link)
     return {
         link = link, itemID = ns.Items.ID(link),
         name = name or link, icon = icon, quality = quality, count = 1, bop = false,
         canNeed = false, canGreed = false, canTransmog = false,
-        startedAt = GetTime() - elapsed, duration = duration, label = label, ilvl = ilvl, over = true,
+        startedAt = GetTime() - gone * DEFAULT_DURATION, duration = DEFAULT_DURATION,
+        label = label, ilvl = ilvl, over = true,
     }
 end
 
@@ -407,9 +410,9 @@ local function onDrop(encounterID, lootListKey)
         local fresh = card == nil
         if fresh then
             if winner or allPassed then return end -- it was over before Tutti saw it
-            local duration, elapsed, stale = dropTiming(info)
+            local gone, stale = dropAge(info)
             if stale then return end
-            card = newCard(dropFields(link, duration, elapsed))
+            card = newCard(dropFields(link, gone))
         end
         card.encounterID, card.lootListKey, card.dropKey = encounterID, lootListKey, dropKey
         byDropKey[dropKey] = card

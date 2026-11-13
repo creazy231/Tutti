@@ -748,6 +748,31 @@ T.it("stale drops are ignored", function()
     T.eq(#added, 2)
 end)
 
+T.it("a drop's age is a share of its duration, whatever unit the history keeps", function()
+    local G, W, ns = T.load()
+    -- Milliseconds, on a clock of their own: 20 s of a minute gone.
+    local now = G.C_LootHistory.GetLootHistoryTime()
+    W.setDrop(9, 1, dropInfo(G, W, {}, { lootListKey = 1, startTime = now - 20000, duration = 60000 }))
+    T.near(ns.Rolls.TimeLeft(ns.Rolls.Cards()[1]), 40, 0.01)
+    -- The same age in seconds, on a clock that has nothing to do with GetTime(): the history's start, clock and
+    -- duration are read against each other and never against Tutti's seconds, so the card counts the same.
+    W.historyTime = 5000
+    W.setDrop(9, 2, dropInfo(G, W, {}, { lootListKey = 2, startTime = 4980, duration = 60 }))
+    T.eq(#ns.Rolls.Cards(), 2)
+    T.near(ns.Rolls.TimeLeft(ns.Rolls.Cards()[2]), 40, 0.01)
+    T.eq(ns.Rolls.Cards()[2].duration, 60, "a card counts a minute: the game's own length is never turned into seconds")
+    -- Out of time is out of time in either unit.
+    W.setDrop(9, 3, dropInfo(G, W, {}, { lootListKey = 3, startTime = 4940, duration = 60 }))
+    T.eq(#ns.Rolls.Cards(), 2, "a drop whose minute is up (60 of 60) is stale")
+    W.setDrop(9, 4, dropInfo(G, W, {}, { lootListKey = 4, startTime = 4941, duration = 60 }))
+    T.eq(#ns.Rolls.Cards(), 3, "one second to go is not")
+    T.near(ns.Rolls.TimeLeft(ns.Rolls.Cards()[3]), 1, 0.01)
+    -- A roll that lasts half a minute is a share of its own length, but the card has no seconds for it.
+    W.historyTime = 800000
+    W.setDrop(9, 5, dropInfo(G, W, {}, { lootListKey = 5, startTime = 795000, duration = 30000 }))
+    T.near(ns.Rolls.TimeLeft(ns.Rolls.Cards()[4]), 50, 0.01, "5 s of 30 gone: a sixth of the card's minute")
+end)
+
 T.it("a drop whose times cannot be read is not stale", function()
     local G, W, ns = T.load()
     local start = G.C_LootHistory.GetLootHistoryTime()
