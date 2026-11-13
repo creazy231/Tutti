@@ -339,10 +339,169 @@ T.it("a decision that names a winner nobody lists is an ended roll", function()
     T.eq(e.ended, false)
 end)
 
+T.it("a late decision updates the card's entry instead of adding one", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local changed = count(ns, "HISTORY_CHANGED")
+    -- The roll ended with nobody deciding it.
+    local card = handCard(W, 1, { status = "ended", allPassed = false, picks = {
+        [ORLEN[2]] = { state = "greed", name = ORLEN[1], class = ORLEN[3] },
+    } })
+    ns.Fire("CARD_DECIDED", card)
+    ns.Fire("CARD_DECIDED", handCard(W, 2)) -- a newer result after it
+    local entries = ns.History.Entries()
+    T.eq(#entries, 2)
+    local entry = entries[2]
+    T.eq(entry.cardId, card.id, "the entry knows its card")
+    T.eq(entry.ended, true)
+    T.eq(entry.winner, nil)
+    T.eq(column(entry.rows, "state"), "greed,out,out,out,out")
+    local at, place, name = entry.at, entry.place, entry.name
+
+    -- Later the history decides it, and the same card is announced again.
+    W.advance(30)
+    W.zone = "Duskfall Reach"
+    card.status, card.winner = "decided", AYLA[2]
+    card.picks[AYLA[2]] = { state = "need", roll = 61, name = AYLA[1], class = AYLA[3], isSelf = true }
+    ns.Fire("CARD_DECIDED", card)
+    entries = ns.History.Entries()
+    T.eq(#entries, 2, "no second entry")
+    T.eq(entries[2], entry, "the same entry, still where it was: the newest-first order is the first one")
+    T.eq(entries[1].name, "Item 2")
+    T.eq(entry.ended, false)
+    T.eq(entry.allPassed, false)
+    T.eq(entry.winner.name, "Ayla", "now it has its winner")
+    T.eq(entry.winner.class, "DRUID")
+    T.eq(entry.winner.state, "need")
+    T.eq(entry.winner.roll, 61)
+    T.eq(column(entry.rows, "state"), "greed,out,out,out,need", "and the picks as they are now")
+    T.eq(column(entry.rows, "isWinner"), "false,false,false,false,true")
+    T.eq(entry.at, at, "the time of the first decision")
+    T.eq(entry.place, place, "and its place")
+    T.eq(entry.name, name)
+    T.eq(G.TuttiDB.recent[2], entry, "the saved entry is the updated one")
+    T.eq(#G.TuttiDB.recent, 2)
+    T.eq(changed.n, 3, "HISTORY_CHANGED said so")
+
+    -- Ended and then found to be everyone passed.
+    local passed = handCard(W, 3, { status = "ended", allPassed = false })
+    ns.Fire("CARD_DECIDED", passed)
+    local second = ns.History.Entries()[1]
+    T.eq(second.ended, true)
+    passed.status, passed.allPassed = "decided", true
+    ns.Fire("CARD_DECIDED", passed)
+    entries = ns.History.Entries()
+    T.eq(#entries, 3, "still one entry for it")
+    T.eq(entries[1], second)
+    T.eq(second.allPassed, true)
+    T.eq(second.ended, false)
+    T.eq(second.winner, nil)
+
+    -- An announcement that changes nothing still says so, and adds nothing.
+    ns.Fire("CARD_DECIDED", passed)
+    T.eq(#ns.History.Entries(), 3)
+    T.eq(changed.n, 6)
+end)
+
+T.it("a card that ended and is decided later keeps its one entry", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local card = newCard(W, ns, 7, { time = 20000 })
+    T.eq(ns.Rolls.Pick(card, "greed"), true)
+    W.advance(30)
+    T.eq(card.status, "ended")
+    local entry = ns.History.Entries()[1]
+    T.eq(entry.cardId, card.id, "the id Core/Rolls.lua gave the card")
+    T.eq(entry.ended, true)
+    T.eq(column(entry.rows, "state"), "out,out,out,out,greed")
+    -- What Core/Rolls.lua announces when the history gives a card that ended its decision.
+    card.picks[ORLEN[2]] = { state = "need", roll = 87, name = ORLEN[1], class = ORLEN[3] }
+    card.status, card.winner = "decided", ORLEN[2]
+    ns.Fire("CARD_DECIDED", card)
+    T.eq(#ns.History.Entries(), 1)
+    T.eq(ns.History.Entries()[1], entry)
+    T.eq(entry.ended, false)
+    T.eq(entry.winner.name, "Orlen")
+    T.eq(entry.winner.roll, 87)
+    T.eq(column(entry.rows, "state"), "need,out,out,out,greed", "the player's own click is still there")
+end)
+
+T.it("cards without an id, and demo cards, never share an entry", function()
+    local G, W, ns = T.load()
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { id = false }))
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { id = false }))
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { id = "one" }))
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { id = "one" }))
+    T.eq(#ns.History.Entries(), 4, "an id that is no number names no card")
+    T.eq(ns.History.Entries()[1].cardId, nil)
+
+    -- A demo card and a real card may count the same number.
+    G, W, ns = T.load()
+    ns.Fire("CARD_DECIDED", handCard(W, 1))
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { demo = true, name = "Demo item" }))
+    local entries = ns.History.Entries()
+    T.eq(#entries, 2, "a demo card does not take over a real card's entry")
+    T.eq(entries[1].name, "Demo item")
+    T.eq(entries[1].demo, true)
+    T.eq(entries[2].name, "Item 1")
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { demo = true, name = "Demo item", allPassed = false }))
+    T.eq(#ns.History.Entries(), 2, "but a demo card is its own card again")
+    T.eq(ns.History.Entries()[1].ended, true)
+    T.eq(ns.History.Entries()[2].ended, false, "and the real entry stays as it was")
+    -- A card that says demo = false is a real card.
+    local real = handCard(W, 7, { demo = false, status = "ended", allPassed = false })
+    ns.Fire("CARD_DECIDED", real)
+    real.status, real.allPassed = "decided", true
+    ns.Fire("CARD_DECIDED", real)
+    T.eq(#ns.History.Entries(), 3, "one entry for it")
+    T.eq(ns.History.Entries()[1].allPassed, true)
+    T.eq(ns.History.Entries()[1].demo, nil)
+
+    -- An id that ns.IsSecret calls secret names no entry, and none is made for it by that id.
+    G, W, ns = T.load()
+    local hidden = withSecrets(ns)
+    ns.Fire("CARD_DECIDED", handCard(W, 1))
+    hidden[1] = true
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { name = "Secret id" }))
+    entries = ns.History.Entries()
+    T.eq(#entries, 2, "a secret id is never compared")
+    T.eq(entries[1].cardId, nil)
+    T.eq(entries[2].cardId, 1)
+end)
+
+T.it("card ids restart at a /reload, so a new card never takes over an old entry", function()
+    local G, W, ns = T.load()
+    ns.Fire("CARD_DECIDED", handCard(W, 1))
+    ns.Fire("CARD_DECIDED", handCard(W, 2))
+    T.eq(ns.History.Entries()[1].cardId, 2)
+    local saved = G.TuttiDB
+
+    -- The same session goes on after the /reload, and Core/Rolls.lua counts from 1 again.
+    G, W, ns = T.load({ db = saved, login = false })
+    W.fire("PLAYER_ENTERING_WORLD", false, true)
+    local kept = ns.History.Entries()
+    T.eq(#kept, 2, "the results are kept")
+    T.eq(kept[1].cardId, nil, "but the ids of the cards that are gone are not")
+    T.eq(kept[2].cardId, nil)
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { name = "After the reload" }))
+    local entries = ns.History.Entries()
+    T.eq(#entries, 3, "the new card number 1 is a new entry")
+    T.eq(entries[1].name, "After the reload")
+    T.eq(entries[1].cardId, 1)
+    T.eq(entries[2].name, "Item 2")
+    T.eq(entries[3].name, "Item 1")
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { name = "After the reload", allPassed = false }))
+    T.eq(#ns.History.Entries(), 3, "and it is found again by its id")
+    T.eq(ns.History.Entries()[1].ended, true)
+    T.eq(ns.History.Entries()[3].ended, false, "the old entries are as they were")
+end)
+
 T.it("place is the instance name, else the zone", function()
     local G, W, ns = T.load()
+    local n = 0
     local function place()
-        ns.Fire("CARD_DECIDED", handCard(W, 1))
+        n = n + 1
+        ns.Fire("CARD_DECIDED", handCard(W, n))
         return ns.History.Entries()[1].place
     end
     T.eq(place(), "Greymist Hollow", "outside an instance: the zone, never GetInstanceInfo's continent")
@@ -359,8 +518,10 @@ end)
 
 T.it("a place the game keeps from the addon falls back, down to Unknown", function()
     local G, W, ns = T.load()
+    local n = 0
     local function place()
-        ns.Fire("CARD_DECIDED", handCard(W, 1))
+        n = n + 1
+        ns.Fire("CARD_DECIDED", handCard(W, n))
         return ns.History.Entries()[1].place
     end
     W.instance = true
