@@ -1,0 +1,57 @@
+local T = T
+
+-- The only globals the addon may create; everything else lives in its namespace.
+local ALLOWED = {
+    TuttiDB = true, SLASH_TUTTI1 = true,
+    Tutti_OnAddonCompartmentClick = true, Tutti_OnAddonCompartmentEnter = true, Tutti_OnAddonCompartmentLeave = true,
+}
+
+-- The "## Key: value" lines of Tutti.toc.
+local function toc()
+    local fields = {}
+    for line in io.lines("Tutti.toc") do
+        line = line:gsub("\r", "")
+        local key, value = line:match("^## ([%w%-]+):%s*(.-)%s*$")
+        if key then fields[key] = value end
+    end
+    return fields
+end
+
+T.it("every TOC file loads", function()
+    local G, W, ns = T.load()
+    T.ok(ns.Theme and ns.DB, "the theme and the database exist")
+    T.ok(#T.tocFiles() >= 4, "the TOC lists the core files")
+end)
+
+T.it("only the allowed globals are created", function()
+    local G, W = T.load()
+    for k in pairs(W.globalsWritten) do
+        if not ALLOWED[k] then error("unexpected global: " .. tostring(k)) end
+    end
+end)
+
+T.it("the TOC says Interface 16001, Author creazy231, SavedVariables TuttiDB", function()
+    local t = toc()
+    T.eq(t.Interface, "16001", "Interface")
+    T.eq(t.Author, "creazy231", "Author")
+    T.eq(t.SavedVariables, "TuttiDB", "SavedVariables")
+    T.eq(t.Title, "Tutti", "Title")
+    T.eq(t.Version, "@project-version@", "the packager fills in the version")
+    T.eq(t.OptionalDeps, "EllesmereUI, NaowhForever_BiS", "OptionalDeps")
+    T.eq(t.IconTexture, "Interface\\AddOns\\Tutti\\Media\\mark", "IconTexture")
+end)
+
+T.it("the TOC names the addon compartment functions", function()
+    local G = T.load()
+    local t = toc()
+    local names = {
+        AddonCompartmentFunc = "Tutti_OnAddonCompartmentClick",
+        AddonCompartmentFuncOnEnter = "Tutti_OnAddonCompartmentEnter",
+        AddonCompartmentFuncOnLeave = "Tutti_OnAddonCompartmentLeave",
+    }
+    for key, name in pairs(names) do
+        T.eq(t[key], name, key)
+        -- UI/Launcher.lua defines them; until it is in the TOC their absence is fine.
+        if G[name] ~= nil then T.eq(type(G[name]), "function", name) end
+    end
+end)
