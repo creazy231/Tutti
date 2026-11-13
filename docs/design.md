@@ -205,7 +205,7 @@ The tokens are the Sotto / Polestar "EllesmereUI" scheme, read live from Ellesme
   - Need #6bd999, Greed #fabf4d, Pass #8d9096;
   - text #f8f8f8, #cacccf and #a2a5a9, plus #6f7277 for the faintest;
   - hairlines in white at 6 % and 10 %;
-  - quality colours lifted to 4.5:1 for text (rare #2b8cff) with the original for the icon edge (rare #0070dd);
+  - quality colours for text are the quality colour brightened in OKLab lightness (hue and chroma kept) until it reads at 5.5:1 on the window background. That gives rare #2f8dfc, the mockup's #2b8cff to within a few steps, and epic #c35cff. The icon edge keeps the original (rare #0070dd);
   - accent: class colour (druid #ff7d0a) or EllesmereUI's (#00cfff).
 - **Font:** EllesmereUI's font (Expressway; bold names use "Expressway Bold" next to it), no outline, 1 px shadow. Without EllesmereUI: the game font.
 - **Animations:**
