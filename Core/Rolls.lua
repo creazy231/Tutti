@@ -533,10 +533,10 @@ function Rolls.Rows(card)
     end)
     for _, guid in ipairs(rest) do
         local pick = picks[guid]
-        local mine = pick.isSelf == true -- the player, when the group list could not list them
+        local isPlayer = pick.isSelf == true -- the player, when the group list could not list them
         rows[#rows + 1] = {
-            guid = guid, name = ns.Group.FirstName(pick.name), class = pick.class, isPlayer = mine,
-            state = settled(mine and playerState(card, pick) or pick.state), roll = pick.roll,
+            guid = guid, name = ns.Group.FirstName(pick.name), class = pick.class, isPlayer = isPlayer,
+            state = settled(isPlayer and playerState(card, pick) or pick.state), roll = pick.roll,
             isWinner = card.winner == guid,
         }
     end
