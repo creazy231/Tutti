@@ -40,7 +40,11 @@
 --  with no such card, still undecided and not out of time, makes a card of its own: no roll, `over`,
 --  no buttons. When the player's roll starts later it joins that card instead of making a second one.
 --  A card is decided when the history names a winner or says everyone passed. A card the history
---  never decides ends 5 seconds (ENDED_GRACE) after its time is up; it is then final.
+--  never decides ends 5 seconds (ENDED_GRACE) after its time is up (status "ended"); a decision that
+--  comes later still decides it, and CARD_DECIDED comes a second time for that card. A decided card is
+--  never decided again. A drop key that a card has had is remembered after the card is forgotten, until
+--  the game clears its history (LOOT_HISTORY_CLEAR_HISTORY): a drop whose card is gone is old news and
+--  is ignored, so an old drop sent again never takes a new roll.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided
@@ -48,7 +52,8 @@
 --                                      changed: "state" for a new pick or another state, "roll" when
 --                                      only the number is new or different. decided: this message
 --                                      is the card's decision (or its end).
---    "CARD_DECIDED", card              once per card: a decision, or the end of a roll nobody decided
+--    "CARD_DECIDED", card              a card's result: a decision, or the end of a roll nobody decided;
+--                                      once more for a card that ended and is decided later
 --    "CARD_REMOVED", card
 --  Everything the game hands over passes ns.Clear (ns.IsSecret and a type check) before it is used.
 -------------------------------------------------------------------------------
@@ -76,6 +81,7 @@ local STATE_OF = { [0] = "need", [1] = "need", [2] = "transmog", [3] = "greed", 
 local list = {}       -- the cards in arrival order
 local byID = {}       -- Tutti's own id -> card
 local byDropKey = {}  -- "<encounterID>:<lootListKey>" -> the card that has the drop
+local knownDrops = {} -- every such key a card has had, kept after the card is forgotten
 local lastID = 0
 
 -------------------------------------------------------------------------------
@@ -196,12 +202,12 @@ local function newCard(fields)
     return card
 end
 
--- The live cards that `wanted` accepts and that show the item a link names, oldest first: those with
--- that very link or, when there are none, those with that item.
+-- The cards that `wanted` accepts and that show the item a link names, oldest first: those with that
+-- very link or, when there are none, those with that item.
 local function showing(link, itemID, wanted)
     local same, item = {}, {}
     for _, card in ipairs(list) do
-        if card.status == "live" and wanted(card) then
+        if wanted(card) then
             if link and card.link == link then same[#same + 1] = card end
             if itemID and card.itemID == itemID then item[#item + 1] = card end
         end
@@ -218,8 +224,9 @@ local function hasLiveCard(rollID)
     return false
 end
 
--- The game named a card's winner, or says everyone passed: the card is decided, once. The caller
--- announces the change.
+-- The game named a card's winner, or says everyone passed: the card is decided. A card that had ended
+-- is decided too when the history gets to it late; CARD_DECIDED then comes a second time. The caller
+-- announces the change and never decides a card that is decided already.
 local function decide(card, winnerGUID, allPassed)
     card.status, card.winner, card.allPassed, card.decidedAt = "decided", winnerGUID, allPassed, GetTime()
     ns.Fire("CARD_DECIDED", card)
@@ -259,7 +266,7 @@ local function add(rollID, rollTime)
     local roll = readRoll(rollID, rollTime)
     if not roll then return end
     local waiting = showing(roll.link, roll.itemID, function(card)
-        return card.rollID == nil and card.dropKey ~= nil
+        return card.status == "live" and card.rollID == nil and card.dropKey ~= nil
     end)[1]
     if waiting then return join(waiting, roll) end
     local card = newCard(roll)
@@ -373,12 +380,14 @@ local function dropFields(link, gone)
     }
 end
 
--- The card of the player's roll that a drop belongs to: of the live cards with a roll and no drop that
--- show the item, the one whose pick is the player's state in the drop (no pick counts as still
--- choosing), else the oldest. Nil when there is none.
-local function rollOfDrop(info, link)
+-- The card of the player's roll that a drop belongs to: of the cards with a roll and no drop that show
+-- the item (the live ones; and the ended ones when the drop is decided, which may be their late
+-- decision), the one whose pick is the player's state in the drop (no pick counts as still choosing),
+-- else the oldest. Nil when there is none.
+local function rollOfDrop(info, link, isDecided)
     local candidates = showing(link, ns.Items.ID(link), function(card)
         return card.rollID ~= nil and card.dropKey == nil
+            and (card.status == "live" or (isDecided and card.status == "ended"))
     end)
     local state = stateOf(info.playerRollState)
     for _, card in ipairs(candidates) do
@@ -402,20 +411,22 @@ local function onDrop(encounterID, lootListKey)
     local winner = clear(info.winner, "table")
     local winnerGUID = winner and text(winner.playerGUID)
     local allPassed = yes(info.allPassed)
+    local isDecided = winner ~= nil or allPassed
 
     local dropKey = encounterID .. ":" .. lootListKey
     local card = byDropKey[dropKey]
     if not card then
-        card = rollOfDrop(info, link)
+        if knownDrops[dropKey] then return end -- a card had this drop and is gone: old news
+        card = rollOfDrop(info, link, isDecided)
         local fresh = card == nil
         if fresh then
-            if winner or allPassed then return end -- it was over before Tutti saw it
+            if isDecided then return end -- it was over before Tutti saw it
             local gone, stale = dropAge(info)
             if stale then return end
             card = newCard(dropFields(link, gone))
         end
         card.encounterID, card.lootListKey, card.dropKey = encounterID, lootListKey, dropKey
-        byDropKey[dropKey] = card
+        byDropKey[dropKey], knownDrops[dropKey] = card, true
         if fresh then
             ns.Fire("CARD_ADDED", card)
             watch(card)
@@ -426,7 +437,7 @@ local function onDrop(encounterID, lootListKey)
     local changes = { picks = readPicks(card, info) }
     card.history = true
     card.tied = yes(info.isTied)
-    if card.status == "live" and (winnerGUID or allPassed) then
+    if card.status ~= "decided" and (winnerGUID or allPassed) then
         decide(card, winnerGUID, allPassed)
         changes.decided = true
     end
@@ -602,6 +613,12 @@ end)
 ns.On("LOOT_HISTORY_UPDATE_DROP", function(_, encounterID, lootListKey)
     encounterID, lootListKey = clear(encounterID, "number"), clear(lootListKey, "number")
     if encounterID and lootListKey then onDrop(encounterID, lootListKey) end
+end)
+
+-- The game clears its loot history and may use its keys again: the ones Tutti remembers, and the cards
+-- they pointed at, go. A card keeps its own fields and picks.
+ns.On("LOOT_HISTORY_CLEAR_HISTORY", function()
+    byDropKey, knownDrops = {}, {}
 end)
 
 -- After a /reload (and at any loading screen) the game still lists the rolls the player has not
