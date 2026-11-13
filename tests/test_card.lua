@@ -10,6 +10,13 @@ local function axeInfo()
         equipLoc = "INVTYPE_2HWEAPON", texture = 135348 }
 end
 
+-- A holdable, item 18001: its label, "Held In Off-hand", is the longest a subtitle has.
+local ORB = 18001
+local function orbInfo()
+    return { name = "Glass Sphere", quality = 3, ilvl = 33, classID = 4, subclassID = 0, equipLoc = "INVTYPE_HOLDABLE",
+        texture = 134333 }
+end
+
 -- A roll for the axe; `over` changes or adds fields of the spec.
 local function axeSpec(W, over)
     local spec = { link = W.itemLink(AXE, "Guardian's Dualblade", 3), name = "Guardian's Dualblade", texture = 135348 }
@@ -150,6 +157,8 @@ T.it("awaiting the player: three buttons, five rows in party order, height 218 w
     T.eq(view.icon:GetWidth(), 34)
     T.eq(top - view.track:GetTop(), 51, "the countdown 8 below the icon")
     T.eq(view.track:GetHeight(), 2)
+    same(view.track._color, 1, 1, 1, "the track is white")
+    T.near(view.track._color[4], 0.08, 1e-9, "at 8 %")
     T.eq(view.track:GetWidth(), 280)
     T.eq(top - b.need:GetTop(), 60, "the buttons 1 below the countdown's block")
     T.eq(b.need:GetLeft() - left, 10)
@@ -468,7 +477,11 @@ T.it("winner: wash shown, crown shown, number in the accent, losers at 0.42, sub
     local rows = rowsOf(view)
     local orlen = rows[1]
     T.ok(orlen.wash:IsShown(), "the winner's wash")
+    T.eq(orlen.wash:GetTexture(), ns.W.MEDIA .. "wash")
+    same({ orlen.wash:GetVertexColor() }, ns.Theme.Accent())
+    T.near(select(4, orlen.wash:GetVertexColor()), 0.28, 1e-9, "the wash at 28 %")
     T.ok(orlen.edge:IsShown(), "and its 2 px accent edge")
+    T.eq(orlen.edge:GetWidth(), 2)
     T.ok(orlen.crown:IsShown(), "the crown")
     same(textColor(orlen.roll), ns.Theme.Accent())
     T.eq(orlen:GetAlpha(), 1, "the winner stays bright")
@@ -520,13 +533,23 @@ T.it("the player wins: 'You won · Need 87', glow and shine started", function()
     same(textColor(view.parts[1]), ns.Theme.Accent())
     T.ok(view.ring:IsShown(), "the icon ring glows")
     T.eq(view.ring:GetWidth(), 46)
+    T.eq(view.ring:GetHeight(), 46)
+    same({ view.ring:GetVertexColor() }, ns.Theme.Accent())
     local rx, ry = view.ring:GetCenter()
     local ix, iy = view.icon:GetCenter()
     T.eq(rx, ix, "centred on the icon")
     T.eq(ry, iy)
     T.ok(view.shine:IsShown(), "the shine crosses")
     T.near(view.shine:GetWidth(), 0.34 * 300, 1e-6, "a third of the card wide")
-    T.ok(view.shine:GetParent():GetHeight() > 0, "over the whole card")
+    local clip, band = view.shine:GetParent(), view.shine
+    T.eq(clip:GetTop(), view:GetTop(), "the band slides in a frame over the whole card: its top")
+    T.eq(clip:GetBottom(), view:GetBottom(), "its bottom")
+    T.eq(clip:GetLeft(), view:GetLeft(), "its left")
+    T.eq(clip:GetRight(), view:GetRight(), "its right")
+    T.eq(clip._clips, true, "which clips it")
+    T.eq(band:GetHeight(), view:GetHeight(), "the band is as high as the card")
+    same({ band.tex:GetVertexColor() }, ns.Theme.Accent())
+    T.near(select(4, band.tex:GetVertexColor()), 0.2, 1e-9, "the shine at 20 %")
     local me = rowsOf(view)[5]
     T.ok(me.crown:IsShown() and me.wash:IsShown(), "the player's row has the crown and the wash")
     W.advance(0.5)
@@ -574,6 +597,111 @@ T.it("an ended card that is decided later shows the winner with the wash and the
     T.ok(orlen.wash:GetWidth() < 280, "sweeping")
 end)
 
+T.it("a late decision that arrives while the card is folded plays when the card opens", function()
+    local G, W, ns, window = setup()
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    local view, card = roll(W, ns, window)
+    view.buttons.need:Click()
+    W.advance(66)
+    T.eq(card.status, "ended")
+    view:SetFolded(true)
+    W.setDrop(9, 7, drop(G, W, { pick(G, ORLEN, "Greed"), pick(G, AYLA, "NeedMainSpec", 87, true) },
+        { winner = pick(G, AYLA, "NeedMainSpec", 87, true), startTime = began }))
+    T.eq(card.status, "decided")
+    T.eq(shown(W, view.foldWinner), "You", "the folded line names the winner")
+    T.no(view.ring:IsShown(), "nothing plays while the card is folded")
+    view:SetFolded(false)
+    local me = rowsOf(view)[5]
+    T.ok(me.crown:IsShown() and me.crown:GetScale() < 1, "the crown pops when the card opens")
+    T.ok(me.wash:IsShown() and me.wash:GetWidth() < 280, "the wash sweeps")
+    T.ok(view.ring:IsShown(), "the icon glows: the player won")
+    T.ok(view.shine:IsShown(), "and the shine crosses")
+    W.advance(4)
+    view:SetFolded(true)
+    view:SetFolded(false)
+    T.eq(me.crown:GetScale(), 1, "once: opening the card again plays nothing")
+    T.no(view.ring:IsShown())
+end)
+
+T.it("a view is built in its parent: its hairlines are one physical pixel at any UI scale", function()
+    local G, W, ns, window = setup()
+    G.UIParent:SetScale(0.5)
+    local view = roll(W, ns, window)
+    local px = ns.W.Pixel(view)
+    T.near(px, 768 / 1080 / 0.5, 1e-9, "a physical pixel at half scale")
+    T.near(view.divider:GetHeight(), px, 1e-9, "the card's hairline")
+    for i, line in ipairs(view.icon.edge) do
+        T.near(i <= 2 and line:GetHeight() or line:GetWidth(), px, 1e-9, "the icon's edge line " .. i)
+    end
+    T.near(view.icon.rim:GetWidth(), 34 + 2 * px, 1e-9, "the icon's rim")
+    T.near(view.foldIcon.edge[1]:GetHeight(), px, 1e-9, "the folded line's icon")
+end)
+
+T.it("the subtitle's left side gives way to 'Your pick · <s>s': the label is cut", function()
+    local G, W, ns, window = setup()
+    W.items[ORB] = orbInfo()
+    ns.BiS.Badge = function() return { text = "2nd pick", star = true, r = 1, g = 209 / 255, b = 0 } end
+    W.addRoll(8, { link = W.itemLink(ORB, "Glass Sphere", 3), name = "Glass Sphere", texture = 134333 })
+    local view = show(ns, window, ns.Rolls.Cards()[1])
+    T.eq(subtitle(W, view), "Held In Off-hand · ilvl 33")
+    T.ok(view.badge:IsShown() and view.yours:IsShown(), "the badge and 'Your pick'")
+    T.ok(view.badge:GetRight() <= view.yours:GetLeft() - 4, "the badge ends 4 px before 'Your pick'")
+    T.ok(view.parts[1]:GetWidth() < view.parts[1]:GetUnboundedStringWidth(), "the label is the one that gives way")
+    T.near(view.parts[2]:GetLeft() - view.parts[1]:GetRight(), 4, 1e-6, "and the rest follows it")
+    view.buttons.pass:Click()
+    T.eq(view.parts[1]:GetWidth(), view.parts[1]:GetUnboundedStringWidth(), "with room again it is whole")
+end)
+
+T.it("names are cut where the columns need the room: a row's before the pick, the folded line's before the winner",
+function()
+    local G, W, ns, window = setup({ setup = function(_, W)
+        W.player.name = "Aylathelongestnameinazeroth Brightwind"
+    end })
+    local long = party()
+    long[4].name = "Kestrelironmarksforlornesons Ironmark"
+    W.setGroup(long)
+    local view = roll(W, ns, window, { name = "Guardian's Dualblade of the Everlasting Night" })
+    local rows = rowsOf(view)
+    T.near(rows[4].name:GetWidth(), 280 - 146, 1e-6, "a long name stops 7 px before the pick column")
+    T.near(rows[4].pick:GetLeft() - rows[4].name:GetRight(), 7, 1e-6)
+    T.near(rows[5].pick:GetLeft() - rows[5].you:GetRight(), 7, 1e-6, "the player's, with the YOU tag after it")
+    T.near(rows[5].you:GetLeft() - rows[5].name:GetRight(), 5, 1e-6)
+    view.buttons.need:Click()
+    W.setDrop(9, 7, decided(G, W, { pick(G, ORLEN, "NeedMainSpec", 19, true), pick(G, AYLA, "Greed") }, ORLEN, 19))
+    view:SetFolded(true)
+    T.ok(view.foldName:GetWidth() < view.foldName:GetUnboundedStringWidth(), "the folded name gives way")
+    T.near(view.foldResult:GetLeft() - view.foldWinner:GetRight(), 7, 1e-6, "to the arrow, the winner and the result")
+end)
+
+T.it("the countdown bar measures from the card, not from a track the game has yet to lay out", function()
+    local G, W, ns, window = setup()
+    local view = roll(W, ns, window)
+    view.track.GetWidth = function() return 0 end -- a track the client has not laid out yet
+    view:Tick()
+    T.ok(view.bar:IsShown(), "the bar is drawn")
+    T.eq(view.bar:GetWidth(), 280, "as wide as the card less its padding")
+end)
+
+T.it("a pooled row is shown before it is painted, so it measures a long name right", function()
+    local G, W, ns, window = setup()
+    local view = roll(W, ns, window)
+    -- A row the game has hidden has no width to read until it shows again.
+    W.setGroup({ party()[1] })
+    view:Update({})
+    T.eq(view.rowCount, 2, "three rows back in the pool, hidden")
+    for _, row in ipairs(view.rows) do
+        local width = row.GetWidth
+        row.GetWidth = function(self) if not self:IsShown() then return 0 end return width(self) end
+    end
+    local long = party()
+    long[4].name = "Kestrelironmarksforlornesons Ironmark"
+    W.setGroup(long)
+    view:Update({})
+    local row = rowsOf(view)[4]
+    T.eq(shown(W, row.name), "Kestrelironmarksforlornesons")
+    T.near(row.pick:GetLeft() - row.name:GetRight(), 7, 1e-6, "a pooled row cuts a long name all the same")
+end)
+
 -------------------------------------------------------------------------------
 --  Raid, folding, the item's tooltip, pooling
 -------------------------------------------------------------------------------
@@ -615,9 +743,10 @@ T.it("raid: only need/greed rows plus the player, then '13 passed · 2 choosing'
     T.no(sum.absent:IsShown(), "no part for a count of 0")
     T.ok(sum.dots:IsShown(), "the dots before 'choosing'")
     T.ok(sum.passIcon:IsShown(), "the Pass glyph before 'passed'")
-    T.eq(view:Height(), 9 + 34 + 16 + 5 * 21 + 22 + 7)
+    T.eq(view:Height(), 9 + 34 + 16 + 5 * 21 + 24 + 7, "the summary's block is 24 px: 2 above it, 22 high (R35)")
+    T.eq(view:GetHeight(), view:Height())
     T.eq(sum:GetHeight(), 22)
-    T.eq(view:GetTop() - sum:GetTop(), 9 + 34 + 16 + 5 * 21, "under the rows")
+    T.eq(view:GetTop() - sum:GetTop(), 9 + 34 + 16 + 5 * 21 + 2, "2 under the rows")
     sum:Click()
     local menu = ns.W.CurrentMenu()
     T.ok(menu and menu:IsShown(), "clicking lists the rest")
@@ -730,6 +859,26 @@ T.it("tooltip on hover, HandleModifiedItemClick on shift-click", function()
     view.iconHit:Click()
     T.eq(#clicked, 2, "a modified click hands the link to the game")
     T.eq(clicked[1], card.link)
+end)
+
+T.it("a roll item the tooltip cannot show falls back to the item's link", function()
+    local G, W, ns, window = setup({ setup = function(G)
+        G.GameTooltip.SetLootRollItem = function() error("no roll by that ID") end
+    end })
+    local view, card = roll(W, ns, window)
+    view.iconHit:_fire("OnEnter")
+    T.eq(G.GameTooltip._link, card.link, "the link's tooltip")
+    T.ok(G.GameTooltip:IsShown())
+end)
+
+T.it("a pooled view comes back with its hairline, which the window hides on the first card only", function()
+    local G, W, ns, window = setup()
+    local view = roll(W, ns, window)
+    view.divider:Hide()
+    ns.Card.Release(view)
+    local again = ns.Card.Acquire(window)
+    T.eq(again, view)
+    T.ok(again.divider:IsShown())
 end)
 
 T.it("a released view stops its effects and comes back for the next card", function()
