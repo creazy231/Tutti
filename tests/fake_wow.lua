@@ -391,9 +391,10 @@ function F.new(opts)
     function Object:SetCollapsesLayout() end
 
     -- textures --------------------------------------------------------------
-    function Object:SetTexture(path) self._texture = path; self._color = nil; return true end
+    -- As in the client, a file replaces an atlas and an atlas replaces a file.
+    function Object:SetTexture(path) self._texture = path; self._color = nil; self._atlas = nil; return true end
     function Object:GetTexture() return self._texture end
-    function Object:SetAtlas(a) self._atlas = a; return true end
+    function Object:SetAtlas(a) self._atlas = a; self._texture = nil; self._color = nil; return true end
     function Object:SetColorTexture(r, g, b, a) self._color = { r, g, b, a or 1 }; self._texture = nil end
     function Object:SetVertexColor(r, g, b, a) self._vertex = { r, g, b, a or 1 } end
     function Object:GetVertexColor() local v = self._vertex or { 1, 1, 1, 1 }; return v[1], v[2], v[3], v[4] end
@@ -443,7 +444,8 @@ function F.new(opts)
     function Object:SetIndentedWordWrap() end
     function Object:SetShadowOffset(x, y) self._shadow = { x, y } end
     function Object:SetShadowColor() end
-    function Object:SetTextScale() end
+    function Object:SetTextScale(s) self._textScale = s end
+    function Object:GetTextScale() return self._textScale or 1 end
     local function fontSize(o) return (o._font and o._font[2]) or 12 end
     function Object:GetStringWidth() return #plain(self._text or "") * fontSize(self) * 0.5 end
     function Object:GetUnboundedStringWidth() return self:GetStringWidth() end
