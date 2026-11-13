@@ -1,0 +1,16 @@
+# Mockup assets: a private game screenshot and EllesmereUI's licensed font.
+# Kept locally, never committed.
+docs/mockup/
+
+# Plan execution scratch (ledger, briefs, review packages)
+.superpowers/
+
+# Packager output and local builds
+.release/
+*.zip
+
+# OS and editor clutter
+.DS_Store
+._*
+__pycache__/
+*.pyc
