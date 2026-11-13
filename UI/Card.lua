@@ -4,15 +4,17 @@
 --  player, then one row per group member with their pick and number, and the winner. Folded, the card is
 --  one line (.result). Everything is drawn from the card as it is now (ns.Rolls), never from a message's
 --  change keys: those only say which effects to play.
---    ns.Card.Acquire(parent) -> view   a card view from the pool, shown, in `parent`, 300 px wide; anchor it
+--    ns.Card.Acquire(parent) -> view   a card view from the pool (or built in `parent`), shown, in `parent`, 300 px
+--                                      wide, its divider shown; anchor it
 --    ns.Card.Release(view)             back to the pool: its effects stop, it is hidden, unanchored, unbound
 --    view:Bind(card)                   show a card as it is, without effects
 --    view:Update(changes)              the card as it is now (after CARD_CHANGED; after GROUP_CHANGED with {}),
 --                                      with the effects of what is new since the view last drew it: a new pick
 --                                      fades in, a new number spins; with changes.decided and a winner, the
 --                                      winner's wash sweeps and the crown pops, and when the winner is the
---                                      player the icon ring glows twice and the shine crosses the card once
---    view:Height() -> px               9 + 34 + 16 [+ 31 buttons [+ 16 reason]] + 21 a row [+ 22 summary] + 7,
+--                                      player the icon ring glows twice and the shine crosses the card once; a
+--                                      decision that reaches a folded view plays when it unfolds
+--    view:Height() -> px               9 + 34 + 16 [+ 31 buttons [+ 16 reason]] + 21 a row [+ 24 summary] + 7,
 --                                      or 26 folded; the view's own height follows it
 --    view:SetFolded(bool)              the 26 px line: icon, name → winner, "Need 19"
 --    view:Tick()                       the countdown's seconds and bar; the window calls it every second
@@ -39,7 +41,8 @@ local NAME_H, SUB_GAP, SUB_H = 16, 2, 13                  -- .in line height, .i
 local TIMER_BLOCK, TIMER_GAP, TIMER_H = 16, 8, 2          -- .timer: 8 above, 2 high, 6 below
 local BUTTONS_BLOCK, BUTTONS_GAP, BUTTON_GAP = 31, 1, 4   -- .btns: 1 above, 23 high, 7 below; 4 between
 local REASON_BLOCK, REASON_GAP, REASON_H = 16, -3, 12     -- .why: -3 above, 12 high, 7 below
-local ROW_H, SUMMARY_H, FOLD_H = 21, 22, 26               -- .pr, .sum, .result
+local ROW_H, FOLD_H = 21, 26                              -- .pr, .result
+local SUMMARY_GAP, SUMMARY_H = 2, 22                      -- .sum: 2 above it (its margin), 22 high (R35)
 local EDGE = 2                                            -- .card.yours::before, the winner's inset edge
 local PIECE_GAP, YOURS_GAP = 4, 3                         -- .is gap; a space before " · 54s"
 local RING = 46                                           -- the glow ring, centred on the 34 px icon
@@ -136,6 +139,12 @@ local function chain(list, anchor, x, gap)
             region:SetPoint("LEFT", list[i - 1], "RIGHT", gap, 0)
         end
     end
+end
+
+-- The width of the head's text column (name, subtitle), from the card's own width, not from anchors the game may
+-- not have resolved yet.
+local function textColumn(view)
+    return view:GetWidth() - 2 * PAD_X - ICON - ICON_GAP
 end
 
 -- "54s": the seconds left, a second that has begun counted whole (a hair of float noise is not a second).
@@ -339,14 +348,15 @@ end
 -------------------------------------------------------------------------------
 --  The item: its tooltip and a modified click (icon and name, on the card and the folded line)
 -------------------------------------------------------------------------------
--- The roll's own tooltip while the game still has the roll, else the link's.
+-- The roll's own tooltip while the game still has the roll, else (or when the game cannot show it) the link's.
 local function showItem(owner, card)
     if not card then return end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     local shown = false
     if card.rollID and card.status == "live" and not card.over then
         shown = pcall(GameTooltip.SetLootRollItem, GameTooltip, card.rollID)
-    elseif card.link then
+    end
+    if not shown and card.link then
         shown = pcall(GameTooltip.SetHyperlink, GameTooltip, card.link)
     end
     if shown then GameTooltip:Show() else GameTooltip:Hide() end
@@ -528,9 +538,28 @@ end
 local function countdown(view, card)
     view.time:SetText((view.yours:IsShown() and "· " or "") .. seconds(card))
     local share = (card.duration or 0) > 0 and Rolls.TimeLeft(card) / card.duration or 0
-    local width = view.track:GetWidth() * share
+    local width = (view:GetWidth() - 2 * PAD_X) * share
     view.bar:SetShown(view.track:IsShown() and width > 0)
     if width > 0 then view.bar:SetWidth(width) end
+end
+
+-- The subtitle's left side gives way to its right one ("Your pick · 54s"): when the pieces and the badge would run
+-- into it, the first piece (the label) is cut where they fit, 4 px before it, as a row's name is. Fitted at every draw,
+-- when the seconds are at their widest: they only shrink until the next.
+local function fitSubtitle(view, chained)
+    local first = chained[1]
+    if not first or first == view.badge then return end
+    first:SetWidth(0)
+    local right = 0
+    if view.time:IsShown() then right = textWidth(view.time) + PIECE_GAP end
+    if view.yours:IsShown() then right = right + textWidth(view.yours) + YOURS_GAP end
+    local rest = 0
+    for i = 2, #chained do
+        local region = chained[i]
+        rest = rest + PIECE_GAP + (region == view.badge and region:GetWidth() or textWidth(region))
+    end
+    local room = textColumn(view) - right - rest
+    if textWidth(first) > room then first:SetWidth(max(room, 1)) end
 end
 
 local function paintHead(view, card, winner, awaits)
@@ -539,7 +568,7 @@ local function paintHead(view, card, winner, awaits)
     font(view.name, "item")
     view.name:SetText(card.name or "")
     paint(view.name, { Th.Quality(card.quality) })
-    view.nameHit:SetWidth(max(min(textWidth(view.name), view.name:GetWidth()), 1))
+    view.nameHit:SetWidth(max(min(textWidth(view.name), textColumn(view)), 1))
 
     local pieces, shown = subtitlePieces(card, winner), {}
     for i, fs in ipairs(view.parts) do
@@ -569,6 +598,7 @@ local function paintHead(view, card, winner, awaits)
     view.track:SetShown(live) -- a card that is over keeps the countdown's room, empty
     view.bar:SetShown(live)
     if live then countdown(view, card) end
+    fitSubtitle(view, shown)
 
     view.edge:SetShown(awaits)
     local r, g, b = Th.Accent()
@@ -638,8 +668,8 @@ local function paintBody(view, card, rows, awaits)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", PAD_X, -(y + (i - 1) * ROW_H))
         row:SetPoint("TOPRIGHT", -PAD_X, -(y + (i - 1) * ROW_H))
+        row:Show() -- before Set: a row the game has hidden has no width to fit a name to
         row:Set(data, { decided = over, height = ROW_H })
-        row:Show()
     end
     for i = #shown + 1, #view.rows do
         local row = view.rows[i]
@@ -654,10 +684,10 @@ local function paintBody(view, card, rows, awaits)
     if rest and #rest > 0 then
         paintSummary(view.summary, rest)
         view.summary:ClearAllPoints()
-        view.summary:SetPoint("TOPLEFT", PAD_X, -y)
-        view.summary:SetPoint("TOPRIGHT", -PAD_X, -y)
+        view.summary:SetPoint("TOPLEFT", PAD_X, -(y + SUMMARY_GAP))
+        view.summary:SetPoint("TOPRIGHT", -PAD_X, -(y + SUMMARY_GAP))
         view.summary:Show()
-        y = y + SUMMARY_H
+        y = y + SUMMARY_GAP + SUMMARY_H
     else
         view.summary:Hide()
     end
@@ -748,7 +778,7 @@ end
 function View:Bind(card)
     if card ~= self.card then
         stopEffects(self)
-        self.folded = false
+        self.folded, self.pendingWin = false, nil
     end
     self.card = type(card) == "table" and card or nil
     render(self)
@@ -759,8 +789,12 @@ function View:Update(changes)
     if not card then return end
     changes = type(changes) == "table" and changes or {}
     local rows, seen = Rolls.Rows(card), self.seen or {}
+    local decided = changes.decided and card.status == "decided"
     render(self, rows)
-    if self.folded then return end
+    if self.folded then
+        if decided then self.pendingWin = true end -- R21's late decision: it plays when the card opens again
+        return
+    end
     for i = 1, self.rowCount do
         local row = self.rows[i]
         local data = row.data
@@ -768,7 +802,7 @@ function View:Update(changes)
         if PICKED[data.state] and was.state ~= data.state then Fx.FadeIn(row.pick) end
         if data.roll ~= nil and was.roll ~= data.roll then Fx.Spin(row.roll, data.roll) end
     end
-    if changes.decided and card.status == "decided" then celebrate(self) end
+    if decided then celebrate(self) end
 end
 
 function View:Height() return self.height or 0 end
@@ -779,7 +813,12 @@ function View:SetFolded(folded)
     self.folded = folded
     stopEffects(self)
     render(self)
-    if folded then Fx.FadeIn(self.fold) end
+    if folded then
+        Fx.FadeIn(self.fold)
+    elseif self.pendingWin then
+        self.pendingWin = nil
+        celebrate(self)
+    end
 end
 
 function View:Tick()
@@ -795,8 +834,9 @@ end
 -------------------------------------------------------------------------------
 --  Building a view, and the pool
 -------------------------------------------------------------------------------
-local function newView()
-    local view = CreateFrame("Frame")
+-- Built in its parent from the start: W.Pixel, which sizes every hairline, reads the scale the view will have.
+local function newView(parent)
+    local view = CreateFrame("Frame", nil, parent)
     view:SetWidth(WIDTH)
     view.rows, view.rowCount, view.seen, view.height = {}, 0, {}, 0
 
@@ -904,10 +944,15 @@ local function newView()
 end
 
 function Card.Acquire(parent)
-    local view = table.remove(pool) or newView()
+    local view = table.remove(pool)
+    if view then
+        view:SetParent(parent)
+    else
+        view = newView(parent)
+    end
     view.pooled = nil
-    view:SetParent(parent)
     view:ClearAllPoints()
+    view.divider:Show() -- the window hides it on the first card only
     view:Show()
     return view
 end
@@ -919,7 +964,8 @@ function Card.Release(view)
         row.data = nil
         row:Hide()
     end
-    view.card, view.folded, view.seen, view.rest, view.rowCount, view.height = nil, false, {}, nil, 0, 0
+    view.card, view.folded, view.pendingWin, view.seen, view.rest = nil, false, nil, {}, nil
+    view.rowCount, view.height = 0, 0
     view:Hide()
     view:ClearAllPoints()
     view.pooled = true
