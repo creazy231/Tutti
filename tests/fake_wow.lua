@@ -933,6 +933,22 @@ function F.new(opts)
         GetLootHistoryTime = function() return W.historyTime or W.clock * 1000 end,
     }
 
+    ---------------------------------------------------------------------------
+    --  Blizzard's event router (Blizzard_Game): the table `GameEvent` is where the game's own handlers
+    --  for an event are registered. UnregisterInternalEvent(event) is the one call Tutti makes: it
+    --  records the event in W.unregistered, every call, as the fake keeps no handlers of its own.
+    --  RegisterInternalEvent records into W.registered, and Tutti must never call it (a handler
+    --  registered from an addon would run tainted). opts.noGameEvent leaves the table out, as a client
+    --  without the router.
+    ---------------------------------------------------------------------------
+    W.unregistered, W.registered = {}, {}
+    if not opts.noGameEvent then
+        G.GameEvent = {
+            UnregisterInternalEvent = function(event) W.unregistered[#W.unregistered + 1] = event end,
+            RegisterInternalEvent = function(event) W.registered[#W.registered + 1] = event end,
+        }
+    end
+
     -- EllesmereUI stand-in (only when a test asks for it).
     function W.installEUI(o)
         o = o or {}
