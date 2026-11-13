@@ -630,10 +630,11 @@ end
 --  Roll button: a pick's glyph and word on a flat button (the mockup's .rb). 23 px high, the width is the
 --  caller's. `body` holds everything that is drawn, `fill` and `edge` the box, `glyph` and `label` the content.
 -------------------------------------------------------------------------------
--- The game's word where it has one, else English.
+-- The game's word where it has one, else English. Transmog always says the short English word (R27): the
+-- game's TRANSMOGRIFICATION is the long noun, "Transmogrification", which the 58 px label would cut.
 local ROLL_WORDS = {
     need = { "NEED", "Need" }, greed = { "GREED", "Greed" }, pass = { "PASS", "Pass" },
-    transmog = { "TRANSMOGRIFICATION", "Transmog" },
+    transmog = { false, "Transmog" },
 }
 local ROLL_GLYPH, ROLL_GAP, ROLL_WORD_MAX = 14, 5, 58 -- px: glyph, gap to the word, longest word shown
 local ROLL_ALPHA, ROLL_PRESS = 0.38, 0.95 -- alpha when not allowed, scale when pressed
@@ -697,7 +698,7 @@ function W.RollButton(parent, kind, onClick)
     b.label:SetJustifyH("LEFT")
     b.label:SetWordWrap(false)
     local word = ROLL_WORDS[kind]
-    b.label:SetText(ns.Text(_G[word[1]]) or word[2])
+    b.label:SetText(ns.Text(word[1] and _G[word[1]]) or word[2])
 
     -- Whether it takes a pick. A button that does not looks faint and ignores the mouse's clicks, hover and
     -- press (the card shows why under the buttons).
