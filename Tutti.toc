@@ -15,4 +15,6 @@ Core\Init.lua
 Core\DB.lua
 Core\Color.lua
 Core\Theme.lua
+Core\Items.lua
 Core\Group.lua
+Core\Rolls.lua

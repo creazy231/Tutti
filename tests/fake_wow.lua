@@ -782,6 +782,115 @@ function F.new(opts)
     -- Where ns.Print writes: the client's default chat window.
     G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) table.insert(W.chatLog, text) end }
 
+    ---------------------------------------------------------------------------
+    --  Items and group loot rolls
+    ---------------------------------------------------------------------------
+    -- The client's English words for an item's slot (what _G[equipLoc] answers).
+    for key, word in pairs({
+        INVTYPE_AMMO = "Ammo", INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder",
+        INVTYPE_BODY = "Shirt", INVTYPE_CHEST = "Chest", INVTYPE_ROBE = "Chest", INVTYPE_WAIST = "Waist",
+        INVTYPE_LEGS = "Legs", INVTYPE_FEET = "Feet", INVTYPE_WRIST = "Wrist", INVTYPE_HAND = "Hands",
+        INVTYPE_FINGER = "Finger", INVTYPE_TRINKET = "Trinket", INVTYPE_CLOAK = "Back",
+        INVTYPE_WEAPON = "One-Hand", INVTYPE_SHIELD = "Off Hand", INVTYPE_2HWEAPON = "Two-Hand",
+        INVTYPE_WEAPONMAINHAND = "Main Hand", INVTYPE_WEAPONOFFHAND = "Off Hand",
+        INVTYPE_HOLDABLE = "Held In Off-hand", INVTYPE_RANGED = "Ranged", INVTYPE_THROWN = "Thrown",
+        INVTYPE_RANGEDRIGHT = "Ranged", INVTYPE_RELIC = "Relic", INVTYPE_TABARD = "Tabard",
+        INVTYPE_BAG = "Bag", INVTYPE_QUIVER = "Quiver",
+    }) do G[key] = word end
+
+    -- Why a Need can be refused. Reason 1 is the client's own wording; 2 to 7 are stand-ins for
+    -- the tests, not the game's text.
+    G.LOOT_ROLL_INELIGIBLE_REASON1 = "Your class may not roll need on this item."
+    for n = 2, 7 do G["LOOT_ROLL_INELIGIBLE_REASON" .. n] = "Need refused (test reason " .. n .. ")" end
+
+    local QUALITY_HEX = { [0] = "9d9d9d", [1] = "ffffff", [2] = "1eff00", [3] = "0070dd", [4] = "a335ee", [5] = "ff8000" }
+    -- W.itemLink(itemID, name, quality = 3): a link as the game writes one.
+    function W.itemLink(itemID, name, quality)
+        return string.format("|cff%s|Hitem:%d::::::::60:::::::|h[%s]|h|r", QUALITY_HEX[quality or 3] or "ffffff",
+            itemID, name or ("Item " .. itemID))
+    end
+
+    -- The client's item cache. W.items[itemID] = { name, link, quality, ilvl, classID, subclassID,
+    -- equipLoc, texture [, type, subType] }: an ID that is missing is not cached, and
+    -- C_Item.GetItemInfo answers nothing for it. type and subType default from the class and
+    -- subclass (English). W.cacheItem(itemID [, data]) stores `data` when it is given and says so
+    -- with GET_ITEM_INFO_RECEIVED, as the game does when it has fetched an item.
+    W.items = {}
+    local CLASS_NAMES = { [0] = "Consumable", [2] = "Weapon", [4] = "Armor", [9] = "Recipe", [15] = "Miscellaneous" }
+    local ARMOR_NAMES = { [0] = "Miscellaneous", "Cloth", "Leather", "Mail", "Plate", "Cosmetic", "Shields", "Librams",
+        "Idols", "Totems", "Sigils", "Relics" }
+    local function itemIDOf(v)
+        if type(v) == "number" then return v end
+        if type(v) == "string" then return tonumber(v:match("item:(%d+)") or v) end
+    end
+    G.C_Item = {
+        -- name, link, quality, ilvl, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice,
+        -- classID, subclassID
+        GetItemInfo = function(v)
+            local it = W.items[itemIDOf(v)]
+            if not it then return end
+            local classID, subclassID = it.classID or 15, it.subclassID or 0
+            return it.name, it.link, it.quality or 1, it.ilvl or 0, 0, it.type or CLASS_NAMES[classID] or "",
+                it.subType or (classID == 4 and ARMOR_NAMES[subclassID]) or "", 1, it.equipLoc or "",
+                it.texture, 0, classID, subclassID
+        end,
+    }
+    function W.cacheItem(itemID, data)
+        if data then W.items[itemID] = data end
+        W.fire("GET_ITEM_INFO_RECEIVED", itemID, true)
+    end
+
+    -- Group loot rolls for the player. W.rolls holds them by roll ID, W.activeRolls is what
+    -- GetActiveLootRollIDs() lists (the rolls the player has not chosen on; a test sets it as the
+    -- game would after a /reload), W.rolled records every RollOnLoot call as { rollID, type }.
+    W.rolls, W.activeRolls, W.rolled = {}, {}, {}
+    local function default(value, fallback)
+        if value == nil then return fallback end
+        return value
+    end
+    -- W.addRoll(rollID, spec, opts): the game starts a roll for the player and says
+    -- START_LOOT_ROLL(rollID, time); opts.silent stores the roll without the event, as it
+    -- stands after a /reload. A roll's answers come from the clock: time is in milliseconds.
+    --   spec  { link, name, texture, quality = 3, count = 1, bop = true, canNeed = true,
+    --           canGreed = true, canTransmog = false, reasonNeed = 0, time = 60000 }
+    function W.addRoll(rollID, spec, opts)
+        spec, opts = spec or {}, opts or {}
+        local roll = {
+            link = spec.link, name = spec.name, texture = spec.texture, quality = default(spec.quality, 3),
+            count = default(spec.count, 1), bop = default(spec.bop, true), canNeed = default(spec.canNeed, true),
+            canGreed = default(spec.canGreed, true), canTransmog = default(spec.canTransmog, false),
+            reasonNeed = default(spec.reasonNeed, 0), duration = default(spec.time, 60000), startedAt = W.clock,
+        }
+        W.rolls[rollID] = roll
+        local known = false
+        for _, id in ipairs(W.activeRolls) do if id == rollID then known = true end end
+        if not known then W.activeRolls[#W.activeRolls + 1] = rollID end
+        if not opts.silent then W.fire("START_LOOT_ROLL", rollID, roll.duration) end
+        return roll
+    end
+    -- Nothing for a roll the game does not know, as in the client.
+    G.GetLootRollItemInfo = function(rollID)
+        local r = W.rolls[rollID]
+        if not r then return end
+        -- texture, name, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed,
+        -- reasonGreed, reasonDisenchant, deSkillRequired, canTransmog
+        return r.texture, r.name, r.count, r.quality, r.bop, r.canNeed, r.canGreed, false, r.reasonNeed, 0, 0, 0,
+            r.canTransmog
+    end
+    G.GetLootRollItemLink = function(rollID) local r = W.rolls[rollID]; return r and r.link end
+    G.GetLootRollTimeLeft = function(rollID) -- milliseconds
+        local r = W.rolls[rollID]
+        if not r then return 0 end
+        return math.max(0, r.duration - (W.clock - r.startedAt) * 1000)
+    end
+    G.C_Loot = { GetLootRollDuration = function(rollID) local r = W.rolls[rollID]; return r and r.duration end } -- ms
+    G.GetActiveLootRollIDs = function()
+        local out = {}
+        for i, id in ipairs(W.activeRolls) do out[i] = id end
+        return out
+    end
+    G.RollOnLoot = function(rollID, rollType) W.rolled[#W.rolled + 1] = { rollID, rollType } end
+
     -- EllesmereUI stand-in (only when a test asks for it).
     function W.installEUI(o)
         o = o or {}
