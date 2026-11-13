@@ -724,6 +724,19 @@ function F.new(opts)
         if not opts.silent then W.fire("GROUP_ROSTER_UPDATE") end
     end
     G.IsInInstance = function() return W.instance == true, W.instance and "party" or "none" end
+    -- Where the player is. W.instance says whether they are inside an instance and IsInInstance and
+    -- GetInstanceInfo follow it. Inside, GetInstanceInfo answers W.instanceName; outside it answers the
+    -- continent's name (W.continent) with the type "none", as the client does, so a caller that takes the
+    -- name without asking whether the player is in an instance gets the continent. GetRealZoneText
+    -- answers W.zone, an instance's name inside one as well when a test sets it so.
+    W.zone, W.continent, W.instanceName = "Greymist Hollow", "Eastern Dunes", "Stonewatch Keep"
+    G.GetRealZoneText = function() return W.zone end
+    -- name, instanceType, difficultyID, difficultyName, maxPlayers, dynamicDifficulty, isDynamic,
+    -- instanceID, instanceGroupSize, lfgDungeonID
+    G.GetInstanceInfo = function()
+        if W.instance == true then return W.instanceName, "party", 1, "Normal", 5, 0, false, 1000, 5, 0 end
+        return W.continent, "none", 0, "", 0, 0, false, 0, 0, 0
+    end
     G.InCombatLockdown = function() return W.combat end
     G.Ambiguate = function(name, ctx)
         if type(name) ~= "string" then error("Ambiguate: string expected", 2) end
