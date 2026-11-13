@@ -8,15 +8,16 @@ the strokes stay crisp at the sizes the UI shows them (glyphs 32 px, shown at
 every WoW client reads.
 
 Where the shapes come from:
-- need, greed, pass, crown, star, clock and the mark follow the SVGs of the
-  approved mockup (docs/mockup/tutti-mockup.html, the ICON object), number for
-  number: the mockup draws them in a 16 unit box (the star in a 10 unit box),
-  so a glyph function writes the mockup's numbers and scales them with u.
+- need, greed, pass, crown, star, clock, gear, chevron and the mark follow the
+  SVGs of the approved mockup (docs/mockup/tutti-mockup.html, the ICON object),
+  number for number: the mockup draws them in a 16 unit box (the star and the
+  chevron in a 10 unit box), so a glyph function writes the mockup's numbers
+  and scales them with u.
 - transmog, a coat hanger, is not in the mockup; it takes the mockup's stroke.
-- gear, close, back, chevron, check, down and the circle, pill and shadow
-  shapes are Sotto's, unchanged.
+- close, back, check, down and the circle, pill and shadow shapes are Sotto's,
+  unchanged.
 - wash, shine and ring are the effect textures; their docstrings say how the
-  code is meant to show them.
+  code is meant to show them. The shine is the mockup's CSS gradient.
 """
 import math
 import os
@@ -77,7 +78,8 @@ def disc(d, cx, cy, r):
 
 
 def ring(d, cx, cy, r, w):
-    """An SVG circle of radius r with a stroke of width w."""
+    """An SVG circle of radius r with a stroke of width w. It clears its own hole, so draw
+    an outer ring before whatever sits inside it."""
     disc(d, cx, cy, r + w / 2)
     d.ellipse(box(cx - r + w / 2, cy - r + w / 2, cx + r - w / 2, cy + r - w / 2), fill=0)
 
@@ -196,6 +198,29 @@ def g_clock(size=32):
     return finish(m, size)
 
 
+def g_gear(size=32):
+    """The outline gear: a ring, a smaller circle inside it and eight short spokes."""
+    m = canvas(size)
+    d = ImageDraw.Draw(m)
+    u = size / 16.0
+    ring(d, 8 * u, 8 * u, 4.4 * u, 1.25 * u)
+    ring(d, 8 * u, 8 * u, 2.2 * u, 1.25 * u)
+    for x0, y0, x1, y1 in ((8, 1.8, 8, 3.6), (8, 12.4, 8, 14.2), (1.8, 8, 3.6, 8), (12.4, 8, 14.2, 8),
+                           (3.6, 3.6, 4.9, 4.9), (11.1, 11.1, 12.4, 12.4),
+                           (3.6, 12.4, 4.9, 11.1), (11.1, 4.9, 12.4, 3.6)):
+        stroke(d, [(x0 * u, y0 * u), (x1 * u, y1 * u)], 1.25 * u)
+    return finish(m, size)
+
+
+def g_chevron(size=32):
+    """The dropdown chevron, pointing down; the mockup draws it in a 10 unit box."""
+    m = canvas(size)
+    d = ImageDraw.Draw(m)
+    u = size / 10.0
+    stroke(d, [(2 * u, 3.5 * u), (5 * u, 6.5 * u), (8 * u, 3.5 * u)], 1.4 * u)
+    return finish(m, size)
+
+
 def g_transmog(size=32):
     """A coat hanger: a hook on a neck above a triangle, in the mockup's 1.3 unit stroke.
     The triangle's corners are sharp, so the ends and joins are round."""
@@ -220,27 +245,6 @@ def g_dot(size=32):
 
 
 # ---------------------------------------------------------------- glyphs (32), Sotto's
-def g_gear(size=32):
-    """Solid gear silhouette: a disc with eight square teeth and a round hole."""
-    m = canvas(size)
-    d = ImageDraw.Draw(m)
-    c = size / 2
-    circle(d, c, c, 8.6)
-    for i in range(8):
-        a = i * math.pi / 4 + math.pi / 8
-        ca, sa = math.cos(a), math.sin(a)
-        hw = 2.3  # half tooth width
-        pts = []
-        for r, side in ((6.5, -1), (12.6, -1), (12.6, 1), (6.5, 1)):
-            x = c + r * ca - side * hw * sa
-            y = c + r * sa + side * hw * ca
-            pts.append((S(x), S(y)))
-        d.polygon(pts, fill=255)
-    hole = S(3.7)
-    d.ellipse([S(c) - hole, S(c) - hole, S(c) + hole, S(c) + hole], fill=0)
-    return finish(m, size)
-
-
 def g_close(size=32):
     m = canvas(size)
     d = ImageDraw.Draw(m)
@@ -253,13 +257,6 @@ def g_back(size=32):
     m = canvas(size)
     d = ImageDraw.Draw(m)
     line(d, [(19.5, 7.0), (10.5, 16.0), (19.5, 25.0)], 2.6)
-    return finish(m, size)
-
-
-def g_chevron(size=32):
-    m = canvas(size)
-    d = ImageDraw.Draw(m)
-    line(d, [(8.5, 12.0), (16.0, 19.5), (23.5, 12.0)], 2.8)
     return finish(m, size)
 
 
@@ -323,17 +320,24 @@ def wash_tex(w=128, h=16):
     return alpha_tex(w, h, lambda x, y: 1 - x / (w - 1))
 
 
-def shine_tex(size=64, lean=20, half=22):
-    """The shine that crosses the card when the player wins: a soft band leaning like a
-    slash, its middle `lean` px further right at the top than at the bottom, and a raised
-    cosine across it (100 % in the middle, 0 % `half` px to either side, so the left and
-    right columns stay clear). Stretched over the mockup's band frame, a third of the
-    card wide (102 px) and as tall as the card (171 px), it leans 10.6 degrees from the
-    vertical: the mockup's 100 degree gradient. Tint it, set the alpha to 0.16 and slide
-    the frame across."""
+def shine_tex(size=64, tilt=10, edge=8):
+    """The shine that crosses the card when the player wins: the mockup's gradient (100deg,
+    transparent, accent, transparent) as a broad soft band over the whole texture. A raised
+    cosine across the full width, 0 % at the left and right edges and 100 % in the middle,
+    so it is half intensity over half the width (51 px on the mockup's band frame, a third
+    of the card wide). Its middle line leans `tilt` degrees from the vertical like a slash
+    (further right at the top), as the 100deg gradient does. The last `edge` px at each side
+    fade to 0, so the lean never leaves a hard edge in the corners. Draw it at full white:
+    tint it, set the alpha to 0.16 and slide the frame across the card."""
+    lean = size * math.tan(math.radians(tilt))  # how far the middle line moves over the height
+
     def alpha(x, y):
-        t = abs(x + 0.5 - (size / 2 + lean * (size / 2 - (y + 0.5)) / size)) / half
-        return 0.5 + 0.5 * math.cos(math.pi * t) if t < 1 else 0.0
+        t = abs(x + 0.5 - (size / 2 + lean * (size / 2 - (y + 0.5)) / size)) / (size / 2)
+        a = 0.5 + 0.5 * math.cos(math.pi * t) if t < 1 else 0.0
+        near = min(x, size - 1 - x)  # columns to the nearest edge
+        if near < edge:
+            a *= 0.5 - 0.5 * math.cos(math.pi * near / edge)
+        return a
     return alpha_tex(size, size, alpha)
 
 

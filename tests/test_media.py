@@ -4,6 +4,7 @@ so code can tint it), every glyph and shape the plan promises is there at its si
 chime is a real Ogg Vorbis file.
 Run from the addon folder: python3 -I tests/test_media.py
 """
+import math
 import os
 import re
 import struct
@@ -84,6 +85,11 @@ def centre(alpha, y):
     return sum(x * v for x, v in enumerate(r)) / (sum(r) or 1)
 
 
+def solid_xs(alpha, y):
+    """The columns of row y that are at 50 % opacity or more."""
+    return [x for x in range(alpha.width) if alpha.getpixel((x, y)) >= 128]
+
+
 def check_tga(path):
     rel = os.path.relpath(path, MEDIA)[:-4].replace(os.sep, "/")
     data = Path(path).read_bytes()
@@ -119,9 +125,10 @@ def check_tga(path):
     solid = alpha.point(lambda v: 255 if v >= 128 else 0).getbbox()
     if solid is None:
         problems.append(f"{path}: blank (nothing at 50 % opacity or more)")
-    elif rel.startswith("Icons/") and (min(solid[:2]) < 1 or solid[2] > w - 1 or solid[3] > h - 1):
+        return
+    if rel.startswith("Icons/") and (min(solid[:2]) < 1 or solid[2] > w - 1 or solid[3] > h - 1):
         problems.append(f"{path}: the glyph is cut off by the edge of its texture")
-    # the shapes the animations lean on
+    # the shapes the animations lean on, and the glyphs whose look was ruled on
     if rel == "wash":
         top = row(alpha, 0)
         if top[0] != 255 or top[-1] != 0 or any(p < q for p, q in zip(top, top[1:])):
@@ -133,14 +140,26 @@ def check_tga(path):
                 or alpha.getextrema()[1] < 200:
             problems.append(f"{path}: the ring must be hollow, bright, and faded out before the edge")
     elif rel == "shine":
+        lean = math.degrees(math.atan((centre(alpha, 0) - centre(alpha, h - 1)) / (h - 1)))
         if any(alpha.crop(e).getbbox() for e in edges[2:]) or alpha.getextrema()[1] < 250 \
-                or abs(centre(alpha, 0) - centre(alpha, h - 1)) < 8:
-            problems.append(f"{path}: the shine must be a diagonal band, soft to both sides")
+                or len(solid_xs(alpha, h // 2)) < 28 or not 7 <= lean <= 13:
+            problems.append(f"{path}: the shine must be a broad soft band: clear at both edges, "
+                            "wide, leaning about 10 degrees like a slash")
     elif rel == "Icons/dot":
-        box = alpha.point(lambda v: 255 if v >= 128 else 0).getbbox()
-        if box is None or not (5 <= box[2] - box[0] <= 7 and 5 <= box[3] - box[1] <= 7) \
-                or abs((box[0] + box[2]) / 2 - w / 2) > 0.5 or abs((box[1] + box[3]) / 2 - h / 2) > 0.5:
+        cx, cy = (solid[0] + solid[2]) / 2, (solid[1] + solid[3]) / 2
+        if not (5 <= solid[2] - solid[0] <= 7 and 5 <= solid[3] - solid[1] <= 7) \
+                or abs(cx - w / 2) > 0.5 or abs(cy - h / 2) > 0.5:
             problems.append(f"{path}: the dot must be a 6 px disc in the middle")
+    elif rel == "Icons/chevron":  # wide at the top, a point at the bottom, as big as the mockup's
+        rows = [y for y in range(h) if solid_xs(alpha, y)]
+        upper, lower = solid_xs(alpha, rows[0]), solid_xs(alpha, rows[-1])
+        if upper[-1] - upper[0] < lower[-1] - lower[0] + 6 or solid[2] - solid[0] < 20:
+            problems.append(f"{path}: the chevron must point down and fill its box like the mockup's")
+    elif rel == "Icons/gear":
+        gap = [alpha.getpixel((int(w / 2 + 6.6 * math.cos(a * math.pi / 4)),
+                               int(h / 2 + 6.6 * math.sin(a * math.pi / 4)))) for a in range(8)]
+        if max(gap) > 64:
+            problems.append(f"{path}: the gear must be the outline one, clear between its two circles")
 
 
 checked = 0
