@@ -671,10 +671,11 @@ local function paintRoll(b)
     end
 
     -- Glyph and word side by side in the middle of the button. The font can change with EllesmereUI's, so
-    -- the word is measured here. A word too long is cut where it ends rather than spilled over the edges.
+    -- the word is measured here, unbounded: once the label has a width, the client's GetStringWidth is held
+    -- to it. A word too long is cut where it ends rather than spilled over the edges.
     ns.Theme.ApplyFont(b.label, "button")
     b.label:SetTextColor(color("text"))
-    local word = min(ceil(b.label:GetStringWidth()), ROLL_WORD_MAX)
+    local word = min(ceil(b.label:GetUnboundedStringWidth()), ROLL_WORD_MAX)
     b.label:SetWidth(word)
     b.glyph:ClearAllPoints()
     b.glyph:SetPoint("LEFT", b.body, "CENTER", -(ROLL_GLYPH + ROLL_GAP + word) / 2, 0)
@@ -695,6 +696,7 @@ function W.RollButton(parent, kind, onClick)
     b.edge = W.Border(b.body, "hair", "BORDER")
     b.glyph = W.Icon(b.body, kind, ROLL_GLYPH, kind, "ARTWORK")
     b.label = b.body:CreateFontString(nil, "OVERLAY")
+    ns.Theme.ApplyFont(b.label, "button") -- the client refuses text on a font string without a font
     b.label:SetJustifyH("LEFT")
     b.label:SetWordWrap(false)
     local word = ROLL_WORDS[kind]

@@ -15,6 +15,13 @@ local function frame(G, w, h)
     return f
 end
 
+-- A font string for a roll number, with its font: the client refuses text on a font string without one.
+local function number(ns, parent)
+    local fs = parent:CreateFontString(nil, "OVERLAY")
+    ns.Theme.ApplyFont(fs, "roll")
+    return fs
+end
+
 -- The x and y of a frame's first anchor.
 local function offsets(f)
     local _, _, _, x, y = f:GetPoint(1)
@@ -113,7 +120,7 @@ T.it("one driver frame runs every tween and hides when none is left", function()
     T.ok(frames >= 1, "the driver has the OnUpdate")
     ns.Fx.Tween(1)
     ns.Fx.Tween(2)
-    ns.Fx.Spin(G.CreateFrame("Frame", nil, G.UIParent):CreateFontString(nil, "OVERLAY"), 5)
+    ns.Fx.Spin(number(ns, G.CreateFrame("Frame", nil, G.UIParent)), 5)
     ns.Fx.Rise(frame(G))
     T.ok(driver:IsShown())
     T.eq(updaters(W), frames, "no frame of its own for a tween or an effect")
@@ -191,7 +198,7 @@ end)
 -------------------------------------------------------------------------------
 T.it("Spin lands on the final number after 0.75 s", function()
     local G, W, ns = T.load()
-    local fs = frame(G):CreateFontString(nil, "OVERLAY")
+    local fs = number(ns, frame(G))
     ns.Fx.Spin(fs, 87)
     local first = tonumber(fs:GetText())
     T.ok(first and first >= 1 and first <= 100, "a number is there at once")
@@ -220,7 +227,7 @@ T.it("Spin shows a new random number from 1 to 100 every frame", function()
         calls[#calls + 1] = { lo, hi }
         return 10 + #calls
     end
-    local fs = frame(G):CreateFontString(nil, "OVERLAY")
+    local fs = number(ns, frame(G))
     ns.Fx.Spin(fs, 5)
     T.eq(fs:GetText(), "11", "the first number at once")
     W.advance(0.016)
@@ -233,7 +240,7 @@ end)
 
 T.it("Spin takes its own time, and scales with SetScale where the font string has no SetTextScale", function()
     local G, W, ns = T.load()
-    local fs = frame(G):CreateFontString(nil, "OVERLAY")
+    local fs = number(ns, frame(G))
     fs.SetTextScale = false -- a client without it
     ns.Fx.Spin(fs, 42, 0.5)
     W.advance(0.45)
@@ -301,15 +308,33 @@ T.it("Sink fades out and calls done after 0.55 s", function()
     T.near(f:GetAlpha(), 1 - out(0.2 / 0.55), 1e-6)
     T.near(select(2, offsets(f)), -226 - 6 * out(0.2 / 0.55), 1e-6, "sinking")
     W.advance(0.34) -- 0.54 s
+    T.near(f:GetAlpha(), 1 - out(0.54 / 0.55), 1e-6, "nearly gone")
     T.eq(done, 0, "not before 0.55 s")
     W.advance(0.02)
     T.eq(done, 1, "done once")
-    T.eq(alpha, 0, "faded out when done is called")
-    T.eq(y, -232, "6 px down")
-    T.eq(f:GetAlpha(), 1, "afterwards the frame is put back: the caller hides it in done")
+    T.eq(alpha, 1, "done finds the frame put back, at its alpha (the caller hides it there, in the same frame)")
+    T.eq(y, -226, "and in its place")
+    T.eq(f:GetAlpha(), 1)
     T.eq(select(2, offsets(f)), -226)
     W.advance(2)
     T.eq(done, 1)
+end)
+
+T.it("an effect that a Sink's done starts on the frame starts from the frame at rest", function()
+    local G, W, ns = T.load()
+    local f = frame(G)
+    local seen
+    ns.Fx.Sink(f, function()
+        seen = { f:GetAlpha(), select(2, offsets(f)) }
+        ns.Fx.Rise(f)
+    end)
+    W.advance(0.6)
+    T.eq(seen[1], 1, "done sees the frame back at its alpha")
+    T.eq(seen[2], -226, "and in its place")
+    W.advance(1)
+    T.eq(select(2, offsets(f)), -226, "so a Rise from there ends where the frame belongs, not 6 px low")
+    T.eq(f:GetAlpha(), 1)
+    T.eq(f:GetNumPoints(), 1)
 end)
 
 T.it("Sink goes on from the alpha the frame has", function()
@@ -565,7 +590,7 @@ end)
 -------------------------------------------------------------------------------
 T.it("a new effect on an object takes over from the one running", function()
     local G, W, ns = T.load()
-    local fs = frame(G):CreateFontString(nil, "OVERLAY")
+    local fs = number(ns, frame(G))
     local texts = {}
     local setText = fs.SetText
     fs.SetText = function(self, text) -- every text the font string is given
@@ -609,7 +634,7 @@ T.it("Cancel on an effect and Stop put the object back at rest", function()
     local G, W, ns = T.load()
     local card = frame(G, 300, 100)
 
-    local fs = card:CreateFontString(nil, "OVERLAY")
+    local fs = number(ns, card)
     local spin = ns.Fx.Spin(fs, 77)
     W.advance(0.3)
     spin:Cancel()

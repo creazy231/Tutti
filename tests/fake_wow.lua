@@ -3,7 +3,8 @@
 --
 --  F.new() builds a fresh global table that looks like the WoW Forever client
 --  (Interface 16001, 12.1 engine) as far as Tutti touches it. Widgets resolve
---  their anchors into rectangles, font strings have deterministic metrics,
+--  their anchors into rectangles, font strings have deterministic metrics
+--  and refuse text until they have a font (as the client does),
 --  events and timers run on demand, and secret values behave like the real
 --  ones where Lua lets us: string functions refuse them and SetText raises.
 --  W is the harness side of it: the state tests read and change (W.player,
@@ -422,16 +423,30 @@ function F.new(opts)
         self._font = { path, size, flags or "" }
         return true
     end
-    function Object:GetFont() local f = self._font or { "Fonts\\FRIZQT__.TTF", 12, "" }; return f[1], f[2], f[3] end
+    -- Nothing until a font is set, as in the client.
+    function Object:GetFont()
+        local f = self._font
+        if f then return f[1], f[2], f[3] end
+    end
     function Object:SetFontObject(o) self._fontObject = o end
+    -- As in the client, a font string with neither a font nor a font object refuses any text.
+    local function fontSet(self, what)
+        if self._type == "FontString" and not self._font and not self._fontObject then
+            error("FontString:" .. what .. "(): Font not set", 3)
+        end
+    end
     function Object:SetText(t)
+        fontSet(self, "SetText")
         if isSecret(t) then error("SetText received a secret value", 2) end
         if t ~= nil and type(t) ~= "string" and type(t) ~= "number" then error("SetText: bad argument", 2) end
         local old = self._text
         self._text = t and tostring(t) or ""
         if self._type == "EditBox" and old ~= self._text then self:_fire("OnTextChanged", false) end
     end
-    function Object:SetFormattedText(fmt, ...) self:SetText(string.format(fmt, ...)) end
+    function Object:SetFormattedText(fmt, ...)
+        fontSet(self, "SetFormattedText")
+        self:SetText(string.format(fmt, ...))
+    end
     function Object:GetText() if self._type == "FontString" and self._text == "" then return nil end return self._text end
     function Object:SetTextColor(r, g, b, a) self._textColor = { r, g, b, a or 1 } end
     function Object:GetTextColor() local c = self._textColor or { 1, 1, 1, 1 }; return c[1], c[2], c[3], c[4] end

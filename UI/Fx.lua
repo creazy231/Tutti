@@ -30,8 +30,10 @@
 --                               then it is hidden. The parent should clip its children. Alpha is yours.
 --    FadeIn(region, seconds)    alpha 0 to 1, 0.35 s.
 --    Rise(frame)                alpha 0 to 1 and 8 px up to its place, 0.35 s. It moves every anchor.
---    Sink(frame, onDone)        alpha to 0 and 6 px down, 0.55 s, then onDone (the frame is faded out; hide
---                               it there), then the frame is put back as it was, so the next Show needs no Rise.
+--    Sink(frame, onDone)        alpha to 0 and 6 px down, 0.55 s; then the frame is put back as it was (its
+--                               place and alpha) and onDone is called: hide it there, in the same frame, so it is
+--                               never drawn back. The next Show needs no Rise, and an effect onDone starts on the
+--                               frame (a Rise) starts from where the frame belongs.
 --    Stop(object)               put the object's running effect, if any, at rest.
 -------------------------------------------------------------------------------
 local _, ns = ...
@@ -160,15 +162,16 @@ function Fx.Stop(target)
 end
 
 -- Starts an effect on `target`: step(t, age) is its frame, rest() leaves the object as it belongs when it
--- ends or is cancelled, after(), if given, is called when it ends (not when it is cancelled), before rest.
+-- ends or is cancelled, after(), if given, is called when it ends (not when it is cancelled), after rest:
+-- an effect that after() starts on the same object then starts from the object at rest.
 local function run(target, seconds, step, rest, delay, after)
     Fx.Stop(target)
     local effect = setmetatable({ target = target, rest = rest }, Effect)
     tracked[target] = effect
     effect.tween = Fx.Tween(seconds, step, function()
         if tracked[target] == effect then tracked[target] = nil end
-        if after then ns.Safe(after) end
         rest()
+        if after then ns.Safe(after) end
     end, delay)
     return effect
 end

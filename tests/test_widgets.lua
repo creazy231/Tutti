@@ -296,7 +296,7 @@ T.it("roll button: measures its word again when the looks change", function()
     local b = Wd.RollButton(parent, "greed")
     b:SetSize(90, 23)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -10)
-    b.label.GetStringWidth = function() return 40 end -- a wider font
+    b.label.GetUnboundedStringWidth = function() return 40 end -- a wider font
     ns.Fire("LOOKS_CHANGED")
     T.eq(b.label:GetWidth(), 40)
     local centre = (b:GetLeft() + b:GetRight()) / 2
