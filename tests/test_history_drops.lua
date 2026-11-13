@@ -1130,6 +1130,7 @@ T.it("a decision after the end finds a card the history never touched", function
     local ST = G.Enum.EncounterLootDropRollState
     W.setGroup(party())
     local card = newCard(W, ns, 7)
+    local began = G.C_LootHistory.GetLootHistoryTime() -- the roll's drop began with it, on the history's clock
     local decided, changed = listen(ns, "CARD_DECIDED"), listen(ns, "CARD_CHANGED")
     W.advance(66)
     T.eq(card.status, "ended")
@@ -1145,8 +1146,9 @@ T.it("a decision after the end finds a card the history never touched", function
     W.setDrop(9, 6, won(G, W, ORLEN, 70, nil, { lootListKey = 6, itemHyperlink = other }))
     T.eq(card.status, "ended")
     T.eq(#ns.Rolls.Cards(), 2, "and makes no card")
-    -- A decided drop for the same item is the ended roll's decision, late.
-    W.setDrop(9, 7, won(G, W, ORLEN, 70, { rollInfo(ORLEN, ST.NeedMainSpec, 70, true), rollInfo(AYLA, ST.Pass) }))
+    -- A decided drop for the same item whose minute is up is the ended roll's decision, late.
+    W.setDrop(9, 7, won(G, W, ORLEN, 70, { rollInfo(ORLEN, ST.NeedMainSpec, 70, true), rollInfo(AYLA, ST.Pass) },
+        { startTime = began }))
     T.eq(card.status, "decided")
     T.eq(card.dropKey, "9:7")
     T.eq(card.winner, ORLEN[2])
@@ -1183,19 +1185,21 @@ T.it("a re-sent old drop never decides a new roll of the same item", function()
     local ST = G.Enum.EncounterLootDropRollState
     W.setGroup(party())
     local old = newCard(W, ns, 7)
-    W.setDrop(9, 1, won(G, W, ORLEN, 87, nil, { lootListKey = 1 }))
+    local drop = won(G, W, ORLEN, 87, nil, { lootListKey = 1 })
+    W.setDrop(9, 1, drop)
     T.eq(old.status, "decided")
     ns.Rolls.Forget(old)
     local new = newCard(W, ns, 8) -- roll 8, the same item
     local added, changed = listen(ns, "CARD_ADDED"), listen(ns, "CARD_CHANGED")
     -- The game sends the old drop again: it is old news, whatever the item.
-    W.setDrop(9, 1, won(G, W, ORLEN, 87, nil, { lootListKey = 1 }))
+    W.setDrop(9, 1, drop)
     T.eq(new.status, "live", "the new roll is still open")
     T.eq(new.dropKey, nil, "and has no drop")
     T.eq(ns.Rolls.AwaitsMe(new), true, "with its buttons")
     T.eq(#ns.Rolls.Cards(), 1, "no card for the old drop")
     -- Even an undecided copy of it.
-    W.setDrop(9, 1, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) }, { lootListKey = 1 }))
+    W.setDrop(9, 1, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) },
+        { lootListKey = 1, startTime = drop.startTime }))
     T.eq(new.dropKey, nil)
     T.eq(#ns.Rolls.Cards(), 1)
     T.eq(#added, 0)
@@ -1233,6 +1237,273 @@ T.it("a history clear lets the drop keys be used again", function()
     T.ok(changed[1].card ~= item, "the old card is not the one that heard")
     T.eq(item.picks[ORLEN[2]].state, "greed", "the old card keeps what it had")
     T.eq(ns.Rolls.Cards()[#ns.Rolls.Cards()].link, third)
+end)
+
+T.it("an older ended card does not take the decided drop of a newer roll", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local older = newCard(W, ns, 7) -- at +0 s
+    W.advance(30)
+    local newer = newCard(W, ns, 8) -- at +30 s, the same item
+    local began = G.C_LootHistory.GetLootHistoryTime() -- roll 8's drop began with it
+    W.advance(36) -- +66 s: roll 7 ended at +65 s with no drop, roll 8 has 24 s left
+    T.eq(older.status, "ended")
+    T.eq(newer.status, "live")
+    local decided = listen(ns, "CARD_DECIDED")
+    -- Roll 8's drop is decided 36 s into its minute: its time is not up, so it is no late decision of roll 7.
+    W.setDrop(9, 2, won(G, W, ORLEN, 70, nil, { lootListKey = 2, startTime = began }))
+    T.eq(newer.status, "decided", "the newer roll has its own drop")
+    T.eq(newer.dropKey, "9:2")
+    T.eq(newer.winner, ORLEN[2])
+    T.eq(older.status, "ended", "and the older one is left alone")
+    T.eq(older.dropKey, nil)
+    T.eq(#decided, 1)
+    T.eq(decided[1].card, newer)
+
+    -- Roll 7's own decision, whose minute is long up, still finds roll 7 while another roll of the item is live.
+    local third = newCard(W, ns, 9)
+    W.setDrop(9, 1, won(G, W, BRISE, 61, nil, { lootListKey = 1, startTime = began - 30000 }))
+    T.eq(older.status, "decided", "a drop whose time is up may be an ended roll's late decision")
+    T.eq(older.dropKey, "9:1")
+    T.eq(older.winner, BRISE[2])
+    T.eq(third.status, "live")
+    T.eq(third.dropKey, nil)
+end)
+
+T.it("a newer roll's decision right after its time goes to that roll, not to an older ended card", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local older = newCard(W, ns, 7) -- at +0 s
+    W.advance(30)
+    local newer = newCard(W, ns, 8) -- at +30 s, the same item
+    local began = G.C_LootHistory.GetLootHistoryTime() -- roll 8's drop began with it
+    W.advance(61) -- +91 s: roll 7 ended at +65 s with no drop; roll 8's minute is up, its 5 s are not
+    T.eq(older.status, "ended")
+    T.eq(newer.status, "live")
+    T.eq(ns.Rolls.TimeLeft(newer), 0, "roll 8 is in its grace")
+    local decided = listen(ns, "CARD_DECIDED")
+    -- The drop is decided with its minute up: it may be roll 7's late decision or roll 8's own, at its timeout.
+    W.setDrop(9, 2, won(G, W, ORLEN, 70, nil, { lootListKey = 2, startTime = began }))
+    T.eq(newer.status, "decided", "the roll whose time has just run out is the one it decides")
+    T.eq(newer.dropKey, "9:2")
+    T.eq(newer.winner, ORLEN[2])
+    T.eq(older.status, "ended", "the older ended card is left alone")
+    T.eq(older.dropKey, nil)
+    T.eq(#decided, 1)
+    T.eq(decided[1].card, newer)
+end)
+
+T.it("an older ended card's late decision goes to it while a newer roll of the same item is still running", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local older = newCard(W, ns, 7) -- at +0 s
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    W.advance(30)
+    local newer = newCard(W, ns, 8) -- at +30 s
+    W.advance(36) -- +66 s: roll 7 ended at +65 s, roll 8 has 24 s left
+    T.eq(older.status, "ended")
+    T.eq(newer.status, "live")
+    T.ok(ns.Rolls.TimeLeft(newer) > 0, "roll 8 is still running")
+    local decided = listen(ns, "CARD_DECIDED")
+    -- Roll 7's drop, decided with its minute long up: a running roll's own clock says it is not roll 8's.
+    W.setDrop(9, 1, won(G, W, BRISE, 61, nil, { lootListKey = 1, startTime = began }))
+    T.eq(older.status, "decided")
+    T.eq(older.dropKey, "9:1")
+    T.eq(older.winner, BRISE[2])
+    T.eq(newer.status, "live", "the newer roll is still open")
+    T.eq(newer.dropKey, nil)
+    T.eq(ns.Rolls.AwaitsMe(newer), true, "with its buttons")
+    T.eq(#decided, 1)
+    T.eq(decided[1].card, older)
+end)
+
+T.it("a late drop's candidates go by group: due, then ended; inside a group the usual rules", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local a = newCard(W, ns, 1) -- +0 s: ends at +65 s
+    W.advance(10)
+    local b = newCard(W, ns, 2) -- +10 s: its minute is up at +70 s, it ends at +75 s
+    W.advance(2)
+    local c = newCard(W, ns, 3) -- +12 s: up at +72 s, ends at +77 s
+    T.eq(ns.Rolls.Pick(c, "greed"), true)
+    W.advance(38)
+    local d = newCard(W, ns, 4) -- +50 s: runs to +110 s
+    W.advance(24) -- +74 s
+    T.eq(a.status, "ended")
+    T.eq(ns.Rolls.TimeLeft(b), 0, "b is in its grace")
+    T.eq(ns.Rolls.TimeLeft(c), 0, "so is c")
+    T.ok(ns.Rolls.TimeLeft(d) > 2, "d is running")
+    local function late(key, state) -- a decided drop whose minute is up, the player's state in it `state`
+        return won(G, W, ORLEN, 70, nil, { lootListKey = key, playerRollState = state,
+            startTime = G.C_LootHistory.GetLootHistoryTime() - 61000 })
+    end
+    -- The rolls in their grace come first, and among them the player's own state (c: Greed), though b is older.
+    W.setDrop(9, 1, late(1, ST.Greed))
+    T.eq(c.dropKey, "9:1", "in their grace: the one whose pick is the player's state in the drop")
+    -- Then, with nothing to tell them apart, the oldest of them: b, not the older ended a.
+    W.setDrop(9, 2, late(2, ST.NoRoll))
+    T.eq(b.dropKey, "9:2", "in their grace, before an ended card")
+    T.eq(a.dropKey, nil)
+    -- Then the ended cards, before the roll that is still running.
+    W.setDrop(9, 3, late(3, ST.NoRoll))
+    T.eq(a.dropKey, "9:3", "ended, before a running roll")
+    T.eq(d.dropKey, nil)
+    T.eq(d.status, "live")
+    -- A roll with more than 2 s left is no candidate at all: its own clock says the drop is not its own.
+    W.setDrop(9, 4, late(4, ST.NoRoll))
+    T.eq(d.dropKey, nil, "a roll that is still running never takes it")
+    T.eq(d.status, "live")
+    T.eq(ns.Rolls.AwaitsMe(d), true, "and keeps its buttons")
+end)
+
+T.it("an old decided drop seen for the first time never decides a running roll", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local live = newCard(W, ns, 7)
+    local began = G.C_LootHistory.GetLootHistoryTime() -- the roll's drop began with it
+    W.advance(20)
+    T.near(ns.Rolls.TimeLeft(live), 40, 0.01)
+    local changed = listen(ns, "CARD_CHANGED")
+    -- After a /reload the game sends old drops again; this one was decided ten minutes ago.
+    local old = won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began - 600000 })
+    W.setDrop(9, 1, old)
+    T.eq(live.status, "live", "a roll with 40 s left is not the one it decides")
+    T.eq(live.dropKey, nil)
+    T.eq(ns.Rolls.AwaitsMe(live), true, "and it keeps its buttons")
+    T.eq(#ns.Rolls.Cards(), 1, "the old drop made no card")
+    T.eq(#changed, 0)
+    -- The key is remembered: when the roll's own time comes and the game sends the old drop once more, it is
+    -- still old news.
+    W.advance(39) -- 1 s left
+    T.eq(ns.Rolls.TimeLeft(live), 1)
+    W.setDrop(9, 1, old)
+    T.eq(live.status, "live", "even though the roll is due now")
+    T.eq(live.dropKey, nil)
+    -- The roll's own decision is another drop.
+    W.advance(1)
+    W.setDrop(9, 2, won(G, W, BRISE, 61, nil, { lootListKey = 2, startTime = began }))
+    T.eq(live.status, "decided")
+    T.eq(live.dropKey, "9:2")
+    T.eq(live.winner, BRISE[2])
+end)
+
+T.it("a decision with 1 s left on the roll's own clock still finds it", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    -- The roll's start reached the client 1 s after its drop began: the drop's minute is up while the roll
+    -- shows 1 s.
+    local began = G.C_LootHistory.GetLootHistoryTime() - 1000
+    W.advance(59)
+    T.near(ns.Rolls.TimeLeft(card), 1, 0.01)
+    W.setDrop(9, 1, won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began }))
+    T.eq(card.status, "decided", "the 2 s of tolerance cover that")
+    T.eq(card.dropKey, "9:1")
+    T.eq(card.winner, ORLEN[2])
+end)
+
+T.it("a roll is a late drop's only with 2 s or less left on its own clock", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local function late(key) -- a decided drop whose minute is up
+        return won(G, W, ORLEN, 70, nil, { lootListKey = key,
+            startTime = G.C_LootHistory.GetLootHistoryTime() - 61000 })
+    end
+    W.advance(57) -- 3 s left
+    W.setDrop(9, 1, late(1))
+    T.eq(card.dropKey, nil, "with 3 s left its own clock says the drop is not its own")
+    T.eq(card.status, "live")
+    W.advance(1) -- 2 s left
+    W.setDrop(9, 2, late(2))
+    T.eq(card.dropKey, "9:2", "with 2 s left it is due")
+    T.eq(card.status, "decided")
+end)
+
+T.it("a decided drop that is not out of time still decides a running roll", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    local live = newCard(W, ns, 7)
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    W.advance(20) -- 40 s left
+    -- Everyone chose within 20 s of the minute: the drop is decided and its time is not up.
+    W.setDrop(9, 1, won(G, W, ORLEN, 70, nil, { lootListKey = 1, startTime = began }))
+    T.eq(live.status, "decided", "a drop inside its minute is a running roll's, as before")
+    T.eq(live.dropKey, "9:1")
+end)
+
+T.it("a drop ignored on first sight is not taken by a roll when the game sends it again", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    -- Decided before Tutti saw it: no card. Out of time before it saw it: no card either.
+    local decided = won(G, W, ORLEN, 70, nil, { lootListKey = 1 })
+    local stale = dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) },
+        { lootListKey = 2, startTime = G.C_LootHistory.GetLootHistoryTime() - 61000 })
+    W.setDrop(9, 1, decided)
+    W.setDrop(9, 2, stale)
+    T.eq(#ns.Rolls.Cards(), 0)
+    -- A roll of the same item starts; the game sends both drops again.
+    local live = newCard(W, ns, 7)
+    local changed = listen(ns, "CARD_CHANGED")
+    W.setDrop(9, 1, decided)
+    W.setDrop(9, 2, stale)
+    T.eq(live.status, "live", "neither drop is the new roll's")
+    T.eq(live.dropKey, nil)
+    T.eq(ns.Rolls.AwaitsMe(live), true)
+    T.eq(#ns.Rolls.Cards(), 1)
+    T.eq(#changed, 0)
+    -- Its own drop is another key and attaches normally.
+    W.setDrop(9, 3, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) }, { lootListKey = 3 }))
+    T.eq(live.dropKey, "9:3")
+end)
+
+T.it("a key the game uses again with another start is a new drop", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local first = newCard(W, ns, 7)
+    local s1 = G.C_LootHistory.GetLootHistoryTime()
+    W.setDrop(9, 1, won(G, W, ORLEN, 87, nil, { lootListKey = 1, startTime = s1 }))
+    T.eq(first.status, "decided")
+    ns.Rolls.Forget(first)
+    -- A drop ignored on first sight whose start cannot be read: remembered, with no start to compare.
+    W.setDrop(9, 4, won(G, W, ORLEN, 70, nil, { lootListKey = 4, startTime = T.secret(1) }))
+    W.advance(300) -- a repeat kill, minutes later
+    local second = newCard(W, ns, 8)
+    local s2 = G.C_LootHistory.GetLootHistoryTime()
+    -- The game uses key 9:1 again for the repeat kill's drop, with no history clear: another start, a new drop.
+    W.setDrop(9, 1, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec), rollInfo(AYLA, ST.NoRoll) },
+        { lootListKey = 1, startTime = s2 }))
+    T.eq(second.dropKey, "9:1", "it goes to the new roll")
+    T.eq(second.status, "live")
+    T.eq(second.history, true)
+    -- Its later updates are the new roll's, found by the key.
+    W.setDrop(9, 1, won(G, W, BRISE, 50, nil, { lootListKey = 1, startTime = s2 }))
+    T.eq(second.status, "decided")
+    T.eq(second.winner, BRISE[2])
+
+    -- Where nobody can tell the drop is the same or another, the old rule holds: it is old news.
+    ns.Rolls.Forget(second)
+    local third = newCard(W, ns, 9)
+    W.setDrop(9, 1, won(G, W, BRISE, 50, nil, { lootListKey = 1, startTime = T.secret(s2) }))
+    T.eq(third.status, "live", "a start that cannot be read says nothing")
+    W.setDrop(9, 1, won(G, W, BRISE, 50, nil, { lootListKey = 1, startTime = s2 }))
+    T.eq(third.status, "live", "the same start is the same drop")
+    W.setDrop(9, 4, won(G, W, ORLEN, 70, nil, { lootListKey = 4, startTime = s2 }))
+    T.eq(third.status, "live", "a key remembered without a start has none to differ from")
+    T.eq(third.dropKey, nil)
+    T.eq(#ns.Rolls.Cards(), 1)
+
+    -- A card that still has its key keeps hearing of it: only a key whose card is gone is looked at again.
+    local held = newCard(W, ns, 10, { link = W.itemLink(AXE + 1, "Other axe") })
+    W.setDrop(9, 5, dropInfo(G, W, { rollInfo(ORLEN, ST.Greed) },
+        { lootListKey = 5, itemHyperlink = held.link, startTime = s2 }))
+    W.setDrop(9, 5, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) },
+        { lootListKey = 5, itemHyperlink = held.link, startTime = s2 + 1000 }))
+    T.eq(held.picks[ORLEN[2]].state, "need", "its drop's start moving does not make it a stranger")
+    T.eq(#ns.Rolls.Cards(), 2, "and makes no card")
 end)
 
 T.it("a card the history made ends the same way", function()
@@ -1414,6 +1685,37 @@ T.it("a change of tied alone is announced", function()
     W.setDrop(9, 8, dropInfo(G, W, rolls, { lootListKey = 8, itemHyperlink = other.link, isTied = true }))
     T.eq(other.tied, true)
     T.eq(changed[5].changes.tied, true)
+end)
+
+T.it("a secret isTied keeps the known tie", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    local hidden = withSecrets(ns)
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    local changed = listen(ns, "CARD_CHANGED")
+    local function rolls(aylaRoll)
+        return { rollInfo(ORLEN, ST.NeedMainSpec, 50), rollInfo(AYLA, ST.NeedMainSpec, aylaRoll) }
+    end
+    W.setDrop(9, 7, dropInfo(G, W, rolls(50), { isTied = true }))
+    T.eq(card.tied, true)
+    local before = #changed
+    -- The flag is a secret (a userdata one, then a plain false that plays one): the tie stays, and the message
+    -- is about the pick that changed with it.
+    W.setDrop(9, 7, dropInfo(G, W, rolls(51), { isTied = T.secret(false) }))
+    T.eq(card.tied, true, "a secret flag does not clear the tie")
+    T.eq(#changed, before + 1)
+    T.eq(changed[#changed].changes.tied, nil)
+    T.eq(changed[#changed].changes.picks[AYLA[2]], "roll")
+    hidden[false] = true
+    W.setDrop(9, 7, dropInfo(G, W, rolls(52), { isTied = false }))
+    T.eq(card.tied, true, "a false that ns.IsSecret calls secret does not either")
+    T.eq(changed[#changed].changes.tied, nil)
+    hidden[false] = nil
+    -- The same flag in the clear is taken.
+    W.setDrop(9, 7, dropInfo(G, W, rolls(52), { isTied = false }))
+    T.eq(card.tied, false)
+    T.eq(changed[#changed].changes.tied, true)
 end)
 
 T.it("an update that says nothing new says nothing", function()
