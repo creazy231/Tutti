@@ -678,7 +678,8 @@ local function whole(W, win, card)
     return y >= 32 - 1e-6 and y + win.views[card]:Height() <= 32 + win.scroll:GetHeight() + 1e-6
 end
 
-T.it("cards that wait on the player bring the first of them into sight; a new one ends the player's own scroll", function()
+T.it("cards that wait on the player bring the first of them into sight; a new one ends the player's own scroll",
+    function()
     local G, W, ns, win = setup()
     ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
     local cards = {}
@@ -1240,7 +1241,8 @@ T.it("a late decision under a hovering mouse unfolds the card once the mouse lea
     decide(G, W, 1, ORLEN, 19, { startTime = began })
     T.eq(a.status, "decided")
     T.eq(win.views[a]:Height(), 26, "under the mouse, with a card waiting, it stays folded")
-    T.eq(W.plain(win.views[a].foldWinner:GetText() or ""), "Orlen", "its line names the late winner")
+    T.eq(W.plain(win.views[a].foldWinner:GetText() or ""), ns.Group.ByGUID(ORLEN[2]).first,
+        "its line names the late winner")
     T.eq(#washes, 0)
     W.advance(10)
     T.eq(win.views[a]:Height(), 26)
@@ -1411,6 +1413,15 @@ T.it("turning Roll in Tutti on brings the buttons at once (final review, item 2)
     T.eq(view:Height(), 201)
     T.no(win.head.close:IsShown(), "the close button hides")
     T.eq(win:GetHeight(), 32 + 201, "the window fits the taller card")
+    -- Turned on while the window is closed (from anywhere but Settings): the card that starts waiting brings it back.
+    local G2, W2, ns2, win2 = setup({ db = { settings = { rollInTutti = false } } })
+    roll(W2, ns2, 1)
+    T.eq(ns2.UI.Close(), true)
+    W2.advance(0.55)
+    T.no(win2:IsShown())
+    ns2.Set("rollInTutti", true)
+    T.ok(win2:IsShown(), "the window comes back")
+    T.eq(ns2.UI.View(), "rolls")
 end)
 
 T.it("turning Roll in Tutti off keeps the buttons until a /reload (final review, item 2)", function()

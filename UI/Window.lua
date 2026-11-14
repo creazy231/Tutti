@@ -543,8 +543,8 @@ end
 -- whole in sight already: nothing moves for a card that shows. The player's own scroll (the wheel) holds that off
 -- only while some waiting card's buttons still show; a new waiting card ends it, and so does a new view. For
 -- HOLD seconds after the player's own pick, while the mouse is over the window, the scroll waits (`heldScroll`)
--- and is done when the mouse leaves or the time is up: the next card's buttons never land under the cursor that
--- has just clicked.
+-- and is done when the mouse leaves or the time is up: the next card's buttons do not land under the cursor in the
+-- moment after its click (a mouse that rests on the window does not hold a card out of sight for longer).
 function reveal()
     heldScroll = false
     if current ~= "rolls" then return end
@@ -1006,16 +1006,22 @@ end)
 
 -- Whether the player rolls in Tutti may have changed ("Roll in Tutti", or Blizzard's popups switched off): every
 -- card draws its buttons, or none, again. A card that starts waiting so is a new waiting card; the window stays in
--- the view it shows (Settings, where the switch is).
+-- the view it shows (Settings, where the switch is), and comes back with the rolls if it was closed.
 local function rollRuleChanged()
+    local started = false
     for _, card in ipairs(order) do
         views[card]:Update({})
         local awaits = waits(card)
-        if awaits and not awaited[card] then byHand = false end
+        if awaits and not awaited[card] then started = true end
         awaited[card] = awaits
     end
-    relayout()
-    drawHeader()
+    if started then byHand = false end
+    if started and not win:IsShown() then
+        UI.Open("rolls")
+    else
+        relayout()
+        drawHeader()
+    end
 end
 
 ns.Listen("POPUPS_CHANGED", rollRuleChanged)
