@@ -1388,6 +1388,69 @@ T.it("an old decided drop seen for the first time never decides a running roll",
     T.eq(live.winner, BRISE[2])
 end)
 
+T.it("an old undecided drop out of time never takes a running roll, nor decides it later", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    W.advance(200) -- the history's clock has moved on
+    local live = newCard(W, ns, 7)
+    W.advance(5)
+    T.near(ns.Rolls.TimeLeft(live), 55, 0.01)
+    local changed = listen(ns, "CARD_CHANGED")
+    -- An old drop of the same item, begun 150 s ago and a minute long, still undecided, sent again (a /reload).
+    local old = dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec) },
+        { lootListKey = 1, startTime = G.C_LootHistory.GetLootHistoryTime() - 150000 })
+    W.setDrop(9, 1, old)
+    T.eq(live.dropKey, nil, "a roll with 55 s left on its own clock is not the one it belongs to")
+    T.eq(#ns.Rolls.Cards(), 1, "and, out of time, it makes no card")
+    T.eq(#changed, 0)
+    -- Its late winner comes: old news, and the running roll keeps its buttons.
+    old.winner = rollInfo(ORLEN, ST.NeedMainSpec, 50, true)
+    W.setDrop(9, 1, old)
+    T.eq(live.status, "live", "the old drop's decision does not decide the running roll")
+    T.eq(ns.Rolls.AwaitsMe(live), true, "its buttons stay")
+    T.near(ns.Rolls.TimeLeft(live), 55, 0.01)
+    T.eq(#changed, 0)
+end)
+
+T.it("an ended roll whose drop is first seen undecided after its time still gets its late winner (R21)", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    local card = newCard(W, ns, 7)
+    ns.Rolls.Pick(card, "greed")
+    W.fire("CANCEL_LOOT_ROLL", 7)
+    W.advance(66)
+    T.eq(card.status, "ended")
+    -- The history's first word on the drop comes after its time, its picks in and no winner yet.
+    local info = dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec, 50), rollInfo(AYLA, ST.Greed) },
+        { startTime = began })
+    W.setDrop(9, 7, info)
+    T.eq(card.dropKey, "9:7", "the drop goes to the ended roll")
+    T.eq(card.status, "ended", "still without a winner")
+    T.eq(ns.Rolls.Rows(card)[1].state, "need", "with the group's picks")
+    local decided = listen(ns, "CARD_DECIDED")
+    info.winner = rollInfo(ORLEN, ST.NeedMainSpec, 50, true)
+    W.setDrop(9, 7, info)
+    T.eq(card.status, "decided", "a moment later the winner decides it")
+    T.eq(card.winner, ORLEN[2])
+    T.eq(#decided, 1, "CARD_DECIDED once more, for the late result")
+end)
+
+T.it("an undecided drop out of time goes to a roll that is due", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local card = newCard(W, ns, 7)
+    -- The roll's start reached the client 1 s after its drop began: the drop's minute is up with 1 s on the roll.
+    local began = G.C_LootHistory.GetLootHistoryTime() - 1000
+    W.advance(59)
+    W.setDrop(9, 1, dropInfo(G, W, { rollInfo(ORLEN, ST.NeedMainSpec, 70) }, { lootListKey = 1, startTime = began }))
+    T.eq(card.dropKey, "9:1", "the roll with 1 s left takes its drop")
+    T.eq(card.status, "live")
+end)
+
 T.it("a decision with 1 s left on the roll's own clock still finds it", function()
     local G, W, ns = T.load()
     W.setGroup(party())

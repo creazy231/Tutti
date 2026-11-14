@@ -53,16 +53,17 @@
 --  A card is decided when the history names a winner or says everyone passed. A card the history
 --  never decides ends 5 seconds (ENDED_GRACE) after its time is up (status "ended"); a decision that
 --  comes later still decides it, and CARD_DECIDED comes a second time for that card. A decided card is
---  never decided again. A decided drop whose time is up (an ended roll's late decision always is) goes
---  first to a live roll with DUE_WINDOW seconds or less left on its own clock, then to an ended roll that
---  has no drop, each by the usual rules; a roll with more time left is never a candidate, since its own
---  clock says the drop cannot be its own. Any other drop, a decided one still inside its minute included,
---  goes to the live rolls, whatever their time, and never to an ended one. A drop key that a card has had,
---  or that Tutti ignored because the drop was decided or out of time when it first saw it, is remembered
---  with the drop's start after the card is forgotten, until the game clears its history
---  (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is old news and is ignored, so an old drop never
---  takes a new roll. The same key with another readable start is a new drop (the game using its keys again
---  for a repeat kill) and is matched as usual.
+--  never decided again. A drop whose time is up, decided or not (an ended roll's late news always is),
+--  goes first to a live roll with DUE_WINDOW seconds or less left on its own clock, then to an ended roll
+--  that has no drop, each by the usual rules; a roll with more time left is never a candidate, since its
+--  own clock says the drop cannot be its own: an old drop seen again never takes a running roll, and an
+--  ended roll whose drop is first seen undecided still gets its late winner. A drop still inside its
+--  minute, decided or not, goes to the live rolls, whatever their time, and never to an ended one. A drop
+--  key that a card has had, or that Tutti ignored because the drop was decided or out of time when it
+--  first saw it, is remembered with the drop's start after the card is forgotten, until the game clears
+--  its history (LOOT_HISTORY_CLEAR_HISTORY): that drop sent again is old news and is ignored, so an old
+--  drop never takes a new roll. The same key with another readable start is a new drop (the game using
+--  its keys again for a repeat kill) and is matched as usual.
 --  Messages:
 --    "CARD_ADDED", card
 --    "CARD_CHANGED", card, changes     changes: a set of item | mine | over | picks | decided | tied
@@ -420,11 +421,11 @@ local function fittest(cards, state)
 end
 
 -- The card of the player's roll that a drop belongs to: of the cards with a roll and no drop that show
--- the item, the one whose pick is the player's state in the drop, else the oldest. For most drops the
--- candidates are the live rolls. A drop that is decided and out of time (`isLate`) is a finished roll's
--- result, so its candidates are the live rolls that are due, with DUE_WINDOW seconds or less left on their
+-- the item, the one whose pick is the player's state in the drop, else the oldest. For a drop inside its
+-- minute the candidates are the live rolls. A drop out of time (`isLate`), decided or not, is a finished
+-- roll's, so its candidates are the live rolls that are due, with DUE_WINDOW seconds or less left on their
 -- own clock, and then the ended ones, each group by those rules; a roll with more time left is never one:
--- its own clock says the drop cannot be its own (an old drop sent again while it runs is not its result).
+-- its own clock says the drop cannot be its own (an old drop sent again while it runs is not its news).
 -- A demo card is no roll of the game's and never takes a drop. Nil when there is none.
 local function rollOfDrop(info, link, isLate)
     local candidates = showing(link, ns.Items.ID(link), function(card)
@@ -469,7 +470,7 @@ local function onDrop(encounterID, lootListKey)
         local known = knownDrops[dropKey]
         if known and not (type(known) == "number" and start and start ~= known) then return end
         local gone, timeUp = dropAge(info)
-        card = rollOfDrop(info, link, isDecided and timeUp)
+        card = rollOfDrop(info, link, timeUp)
         local fresh = card == nil
         if fresh then
             if isDecided or timeUp then
