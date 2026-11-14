@@ -16,16 +16,25 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
   `Media/` (Pillow, ffmpeg); the generator is byte-stable, so only a changed texture shows in git.
 - Visual check without the game: `luajit tools/render_ui.lua <dir>/pick.html pick` draws what the
   addon built in the fake client as an HTML page. Scenes: pick, rolling, winner, youwon, closing,
-  recent, settings and big (the mockup's states), `eui` as a third argument for EllesmereUI's
-  accent. The page expects next to it: `media/` (`python3 -I tools/tga2png.py <dir>`),
-  `fonts/expressway.ttf` and `fonts/expressway-bold.ttf` (the tool also measures text with them),
-  `class/class-<class>.png`, `icons/<key>.png` (axe gloves treads orb robes rope grips) and
-  `backdrop.jpg`, all from `docs/mockup/assets`, some renamed: `icon-dualblade.png` is
-  `icons/axe.png`, `icon-shapers.png` is `icons/gloves.png`, the other `icon-<key>.png` are
-  `icons/<key>.png`, and `bd-dalaran.jpg` is `backdrop.jpg` (private: only for comparing with the
-  mockup, never in a public image). Serve the dir over http; `?shot=1&scale=2&bg=<image>`
-  frames the window for listing shots. Compare with the mockup in the same state (its `#<state>`
-  hash) with headless Chrome at 2x; keep the renders out of the repo.
+  recent, settings and big (the mockup's states) and glow (the listing's "you won"), `eui` as a
+  third argument for EllesmereUI's accent; a film (drop, click, won) writes a page per frame. The
+  page expects next to it: `media/` (`python3 -I tools/tga2png.py <dir>`), `fonts/expressway.ttf`
+  and `fonts/expressway-bold.ttf` (the tool also measures text with them),
+  `class/class-<class>.png` and `icons/<key>.png` (axe gloves treads orb robes rope grips), all
+  from `docs/mockup/assets`, some renamed: `icon-dualblade.png` is `icons/axe.png`,
+  `icon-shapers.png` is `icons/gloves.png`, the other `icon-<key>.png` are `icons/<key>.png`. A
+  page draws no backdrop unless it asks for one: `?bg=backdrop.jpg` (`bd-dalaran.jpg`, renamed;
+  private: only to compare with the mockup in the same state, its `#<state>` hash, with headless
+  Chrome at 2x; never in a public image). Serve the dir over http; keep the renders out of the repo.
+- Listing (`docs/listing/`): the render dir above plus `icon.png` and the generated backdrops
+  `bg-vault.jpg`, `bg-hall.jpg` and `bg-camp.jpg` (kept out of git, with their prompts and
+  `prep_bg.py`, in `.superpowers/listing/`). `python3 -I tools/make_listing.py <dir>` renders
+  `screenshots/` (six shots and the hero); `python3 -I tools/make_gifs.py <dir>` makes the three
+  `animations/` (800 x 500, 15 fps, each under 5 MB; Chrome, Pillow and ffmpeg; the frames stay in
+  `<dir>/gif-<name>/`). Copy and layout are their `SHOTS` and `GIFS` lists (one idea per
+  headline, one `*accent*` word, `|` breaks a line), the films' timing `FILMS` in
+  `tools/render_ui.lua`, the listing's text `docs/listing/curseforge.md`. Look at every image,
+  and at frames of every GIF (`ffmpeg -i x.gif -vsync 0 f%03d.png`), before committing them.
 - Public images (the listing, GIFs): R30's made-up cast (the player Maelis Ashvale, Orlen
   Brightmoor, Brisé Tidewater, Corvel Duskmantle, Kestrel Ironmark) and generated backdrops;
   never the mockup's screenshot (`backdrop.jpg`) or its character names.

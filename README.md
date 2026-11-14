@@ -1,12 +1,14 @@
 # Tutti
 
-<!-- HERO: put ![Tutti](docs/listing/screenshots/hero.png) here once that image exists -->
+![Tutti: every group loot roll in one calm window](docs/listing/screenshots/hero.png)
 
 **Every group loot roll in one calm window, drawn in the EllesmereUI look.**
 When an item drops in your group, Tutti opens by itself and shows who picked Need, Greed or
 Pass, everyone's roll and who won. You roll in the same window. Made for WoW Forever. In
 music, *tutti* is the passage where the whole orchestra plays together; here it is the
 whole group's rolls in one window.
+
+![A boss drop in Tutti: the picks come in, the numbers spin, the winners get their crowns](docs/listing/animations/01-a-boss-drop.gif)
 
 ## What it does
 
@@ -100,7 +102,9 @@ python3 -I tests/test_media.py   # needs Pillow
 
 Media is generated: `python3 -I tools/make_media.py .` (Pillow) and
 `python3 -I tools/make_sound.py .` (ffmpeg). `luajit tools/render_ui.lua` draws the window
-from the fake client as a web page, to check the look without the game. The design is in
+from the fake client as a web page, to check the look without the game;
+`tools/make_listing.py` and `tools/make_gifs.py` make the CurseForge gallery and the
+animations above from it. The design is in
 [docs/design.md](docs/design.md). Releases: see [docs/RELEASING.md](docs/RELEASING.md). When
 Forever is patched, its new interface number goes into `## Interface` in `Tutti.toc`.
 

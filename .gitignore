@@ -5,6 +5,9 @@ docs/mockup/
 # Plan execution scratch (ledger, briefs, review packages)
 .superpowers/
 
+# Personal publishing checklist (local only)
+PUBLISHING.md
+
 # Packager output and local builds
 .release/
 *.zip
