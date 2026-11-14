@@ -17,6 +17,7 @@
 --    view:Height() -> px               9 + 34 + 16 [+ 30 buttons [+ 16 reason]] + 21 a row [+ 24 summary] + 7,
 --                                      or 26 folded; the view's own height follows it
 --    view:SetFolded(bool)              the 26 px line: icon, name → winner, "Need 19"
+--    view:ButtonsAt() -> top, bottom   where its roll buttons are, px from the card's top; nil while it shows none
 --    view:Tick()                       the countdown's seconds and bar; the window calls it every frame it shows
 --    view.divider                      the hairline just above the card (.card's border-top), in the 1 px the
 --                                      window leaves between two cards: the window hides it on the first card
@@ -42,7 +43,7 @@ local PAD_TOP, PAD_X, PAD_BOTTOM = 9, 10, 7               -- .card padding
 local ICON, ICON_GAP = 34, 9                              -- .ico, the .ihead gap
 local NAME_H, SUB_GAP, SUB_H = 16, 2, 13                  -- .in line height, .is margin and line height
 local TIMER_BLOCK, TIMER_GAP, TIMER_H = 16, 8, 2          -- .timer: 8 above, 2 high, 6 below
-local BUTTONS_BLOCK, BUTTON_GAP = 30, 4                  -- .btns: 23 high, 7 below; 4 between. Its 1 px margin
+local BUTTONS_BLOCK, BUTTON_GAP, BUTTON_H = 30, 4, 23    -- .btns: 23 high, 7 below; 4 between. Its 1 px margin
                                                           -- above collapses into the countdown's 6 px below it, as
                                                           -- the mockup draws it
 local REASON_BLOCK, REASON_GAP, REASON_H = 16, -3, 12     -- .why: -3 above, 12 high, 7 below
@@ -653,6 +654,7 @@ local function paintBody(view, card, rows, awaits)
         if not wanted[kind] then button:Hide() end
     end
     view.reason:Hide()
+    view.buttonsTop = awaits and y or nil
     if awaits then
         local width = (view:GetWidth() - 2 * PAD_X - (#kinds - 1) * BUTTON_GAP) / #kinds
         for i, kind in ipairs(kinds) do
@@ -771,7 +773,7 @@ local function render(view, rows)
     view.fold:SetShown(view.folded)
     if view.folded then
         paintFold(view, card, winner)
-        view.height = FOLD_H
+        view.height, view.buttonsTop = FOLD_H, nil
     else
         local awaits = Rolls.AwaitsMe(card)
         paintHead(view, card, winner, awaits)
@@ -835,6 +837,12 @@ function View:Update(changes)
 end
 
 function View:Height() return self.height or 0 end
+
+function View:ButtonsAt()
+    local top = self.buttonsTop
+    if not top then return nil end
+    return top, top + BUTTON_H
+end
 
 function View:SetFolded(folded)
     folded = folded == true
@@ -1003,7 +1011,7 @@ function Card.Release(view)
         row:Hide()
     end
     view.card, view.folded, view.pendingWin, view.seen, view.rest = nil, false, nil, {}, nil
-    view.rowCount, view.height = 0, 0
+    view.rowCount, view.height, view.buttonsTop = 0, 0, nil
     view:Hide()
     view:ClearAllPoints()
     view.pooled = true

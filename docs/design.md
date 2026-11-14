@@ -127,6 +127,7 @@ Everything below was shown in the approved mockup unless it is marked *(not in t
 - **Folding:**
   - A decided card stays whole for about 4 s while its animation plays.
   - If another card is still open, it then folds into one line under a "Done" label: icon, name, arrow, winner, "Need 19".
+  - While the mouse is over the window and a card waits on the player, folds wait until the mouse leaves: a fold moves the cards under it *(R45)*.
   - The last decided card stays whole until the window closes.
 - **Closing on its own** *(user)*:
   - About 10 seconds after the last roll is decided, the window closes itself.
@@ -153,7 +154,7 @@ How long it keeps results:
 - It holds up to 100 results.
 - They survive `/reload` and are cleared at login.
 
-When a roll starts while Recent rolls or Settings is showing, the window switches to the rolls.
+When a roll starts while Recent rolls or Settings is showing, the window switches to the rolls. While a card there waits on the player, the header's count pill shows in the accent and a click on it leads back; with 10 seconds left on such a card the window goes back to the rolls by itself *(not in the mockup; R45)*.
 
 ### Settings (gear in the header; changes apply at once)
 
@@ -169,7 +170,7 @@ Position: drag the header. It is saved and kept on screen.
 
 ### Bigger groups
 
-In a raid, a card lists only the members who picked Need or Greed, plus you. Everyone else folds into one line, "13 passed · 2 choosing", which opens to list them. A long card list scrolls inside the window once the window would pass about 70 % of the screen height *(the scrolling is not in the mockup)*.
+In a raid, a card lists only the members who picked Need or Greed, plus you. Everyone else folds into one line, "13 passed · 2 choosing", which opens to list them. A long card list scrolls inside the window once the window would pass about 70 % of the screen height *(the scrolling is not in the mockup)*. After every change to the rolls, the oldest card that waits on the player is brought whole into sight; the player's own scroll holds that off only while a waiting card's buttons still show, and for a second after the player's own pick nothing scrolls under the mouse *(R45)*.
 
 ### Other cases *(not in the mockup)*
 

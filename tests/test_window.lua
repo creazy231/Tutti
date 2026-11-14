@@ -536,7 +536,7 @@ T.it("the clock and the gear open Recent rolls and Settings, the back arrow come
     T.eq(pages.recent.refreshed, 1)
     T.no(win.rolls:IsVisible(), "the cards make way")
     T.eq(win:GetHeight(), 32 + 120, "the view's own height")
-    T.no(head.pill:IsShown(), "no count outside the rolls")
+    T.ok(head.pill:IsShown(), "the count shows in every view (R45)")
     same(iconColor(head.clock), { ns.Theme.Accent() }, "the clock in the accent while its view shows")
     same(iconColor(head.gear), { ns.Theme.Color("dim") })
     head.clock:_fire("OnEnter")
@@ -668,13 +668,17 @@ end)
 -- (2 × 171 + 217 + 2 > 549.5).
 local REFUSED = { canNeed = false, reasonNeed = 1 }
 
+-- Two more of the party as the loot history names them (R30's cast; the rows take the group's names by GUID).
+local CORVEL = { "Corvel Duskmantle", "Player-1-0004", "MAGE" }
+local KESTREL = { "Kestrel Ironmark", "Player-1-0005", "WARRIOR" }
+
 -- Whether a card shows whole between the header and the window's bottom.
 local function whole(W, win, card)
     local y = at(W, win, win.views[card])
     return y >= 32 - 1e-6 and y + win.views[card]:Height() <= 32 + win.scroll:GetHeight() + 1e-6
 end
 
-T.it("cards that wait on the player bring the first of them into sight, unless the player scrolled by hand", function()
+T.it("cards that wait on the player bring the first of them into sight; a new one ends the player's own scroll", function()
     local G, W, ns, win = setup()
     ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
     local cards = {}
@@ -683,20 +687,23 @@ T.it("cards that wait on the player bring the first of them into sight, unless t
     local visible = win.scroll:GetHeight()
     T.ok(heights(win, cards) > visible, "the window scrolls")
     T.eq(at(W, win, win.views[cards[1]]), 32, "the first card at the top of what shows: the player works down")
-    -- The player has rolled on the first two; the third is cut off at the bottom until the next roll comes.
+    -- The player rolls on the first two (the mouse elsewhere): the third comes into sight, whole, its top to the
+    -- top as far as the scroll goes (R45: every layout of the rolls brings the oldest waiting card into sight).
     win.views[cards[1]].buttons.pass:Click()
     win.views[cards[2]].buttons.pass:Click()
-    T.no(whole(W, win, cards[3]), "cut off at the bottom")
-    cards[4] = roll(W, ns, 4)
     T.ok(whole(W, win, cards[3]), "the first card still waiting comes into sight, whole")
     T.eq(win.scroll:GetVerticalScroll(), win.content:GetHeight() - visible, "its top to the top, as far as it goes")
-    -- The player scrolls by hand: nothing scrolls by itself any more.
+    -- The player scrolls up by hand, the third card's buttons still showing: the scroll is theirs.
     for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
-    T.no(whole(W, win, cards[3]))
-    cards[5] = roll(W, ns, 5)
-    T.eq(win.scroll:GetVerticalScroll(), 0, "the player's own scroll stays")
-    -- Until the window has closed and opened again.
-    for n = 1, 5 do
+    T.eq(win.scroll:GetVerticalScroll(), 0)
+    T.no(whole(W, win, cards[3]), "cut off at the bottom")
+    W.setDrop(9, 3, drop(G, W, 3, { rollInfo(G, ORLEN, "NeedMainSpec") })) -- the card changes: a layout
+    T.eq(win.scroll:GetVerticalScroll(), 0, "the player's own scroll stays while a waiting card's buttons show")
+    -- A new card that waits on the player ends it: the oldest one still waiting comes into sight again.
+    cards[4] = roll(W, ns, 4)
+    T.ok(whole(W, win, cards[3]), "a new waiting card brings the first one back")
+    -- A new opening starts afresh too.
+    for n = 1, 4 do
         if ns.Rolls.AwaitsMe(cards[n]) then win.views[cards[n]].buttons.pass:Click() end
         decide(G, W, n, ORLEN, 10 + n)
     end
@@ -706,7 +713,6 @@ T.it("cards that wait on the player bring the first of them into sight, unless t
     for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end
     win.views[cards[1]].buttons.pass:Click()
     win.views[cards[2]].buttons.pass:Click()
-    cards[4] = roll(W, ns, 4)
     T.ok(whole(W, win, cards[3]), "a new opening, a new start")
 end)
 
@@ -952,7 +958,7 @@ T.it("a waiting card already whole in sight is not scrolled to", function()
     T.eq(at(W, win, win.views[b]), 32 + win.views[a]:Height() + 1)
 end)
 
-T.it("only a wheel that moves the rolls stops them coming into sight by themselves", function()
+T.it("the player's own scroll holds the reveal off only while a waiting card's buttons show (R45)", function()
     local G, W, ns, win = setup()
     ns.UI.RegisterView("recent", function(parent) -- a long list of results, which scrolls
         local f = G.CreateFrame("Frame", nil, parent)
@@ -961,21 +967,48 @@ T.it("only a wheel that moves the rolls stops them coming into sight by themselv
         return f
     end)
     ns.Set("scale", 1.3)
+    -- Four rolls the player has passed on, and a fifth that waits on them at the bottom.
     local cards = {}
-    for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end
+    for n = 1, 4 do
+        cards[n] = roll(W, ns, n)
+        win.views[cards[n]].buttons.pass:Click()
+    end
+    cards[5] = roll(W, ns, 5, REFUSED)
     W.advance(0.35)
-    win.scroll:_fire("OnMouseWheel", 1) -- at the top already: it moves nothing
-    T.eq(win.scroll:GetVerticalScroll(), 0)
+    local bottom = win.content:GetHeight() - win.scroll:GetHeight()
+    T.ok(whole(W, win, cards[5]), "the fifth card in sight, whole")
+    T.near(win.scroll:GetVerticalScroll(), bottom, 1e-9, "the rolls scrolled down to it")
+    -- Each change of the fifth card's group lays the rolls out again.
+    local picks = {}
+    local function someonePicks(who)
+        picks[#picks + 1] = rollInfo(G, who, "Greed")
+        W.setDrop(9, 5, drop(G, W, 5, picks))
+    end
+    -- A notch at the end moves nothing and is not the player's own scroll: the rolls still bring the card back.
+    win.scroll:_fire("OnMouseWheel", -1)
+    T.near(win.scroll:GetVerticalScroll(), bottom, 1e-9)
+    win.scroll:SetVerticalScroll(bottom - 40) -- the rolls moved, not by the player's hand
+    someonePicks(ORLEN)
+    T.near(win.scroll:GetVerticalScroll(), bottom, 1e-9, "a wheel that moved nothing does not count")
+    -- A notch that moves the rolls is: while the card's buttons still show, its scroll stays.
+    win.scroll:_fire("OnMouseWheel", 1)
+    T.near(win.scroll:GetVerticalScroll(), bottom - 40, 1e-9)
+    T.no(whole(W, win, cards[5]), "the card's rows are cut off at the bottom")
+    someonePicks(BRISE)
+    T.near(win.scroll:GetVerticalScroll(), bottom - 40, 1e-9, "the player's own scroll stays")
+    -- Scrolled on until the card's buttons are out of sight: the next change brings the card back whole.
+    for _ = 1, 3 do win.scroll:_fire("OnMouseWheel", 1) end
+    local _, y = box(W, win, win.views[cards[5]].buttons.pass)
+    T.ok(y > 32 + win.scroll:GetHeight(), "its buttons below the window's bottom")
+    someonePicks(CORVEL)
+    T.ok(whole(W, win, cards[5]), "no waiting card left in sight: it comes back, whole")
+    -- A wheel in Recent rolls scrolls Recent rolls, and the rolls start over on the way back.
+    for _ = 1, 3 do win.scroll:_fire("OnMouseWheel", 1) end
     ns.UI.Open("recent")
     win.scroll:_fire("OnMouseWheel", -1)
     T.eq(win.scroll:GetVerticalScroll(), 40, "Recent rolls scrolls")
     ns.UI.Open("rolls")
-    win.views[cards[1]].buttons.pass:Click()
-    win.views[cards[2]].buttons.pass:Click()
-    T.no(whole(W, win, cards[3]))
-    cards[4] = roll(W, ns, 4)
-    T.ok(win.scroll:GetVerticalScroll() > 0, "the rolls still scroll by themselves")
-    T.ok(whole(W, win, cards[3]), "to the first card still waiting")
+    T.ok(whole(W, win, cards[5]), "back in the rolls, the waiting card in sight")
 end)
 
 T.it("a size the client reads back rounded is not a new size", function()
@@ -998,4 +1031,324 @@ T.it("a size the client reads back rounded is not a new size", function()
     T.eq(repaints, 0, "nor does a drag")
     ns.Set("scale", 1.2)
     T.eq(repaints, 1, "a new size repaints, once")
+end)
+
+-------------------------------------------------------------------------------
+--  Keeping the waiting cards in sight (R45): every layout of the rolls, every way back to them
+-------------------------------------------------------------------------------
+-- A region's top and bottom in the window (y down from the window's top).
+local function span(W, win, region)
+    local _, y, _, h = box(W, win, region)
+    return y, y + h
+end
+
+-- Does the window's y (from its top) fall on the region?
+local function under(W, win, region, y)
+    local top, bottom = span(W, win, region)
+    return y >= top and y <= bottom
+end
+
+T.it("a raid's picks that push the waiting card down bring it back into sight (R45)", function()
+    local G, W, ns, win = setup()
+    local raid = {}
+    for i = 1, 19 do
+        raid[i] = { unit = "raid" .. i, name = "Raider" .. i .. " Ashvale", classFile = "WARRIOR",
+            guid = "Player-1-1" .. i }
+    end
+    raid[20] = { unit = "raid20", isPlayer = true }
+    W.setGroup(raid, { raid = true })
+    local cards = {}
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end
+    win.views[cards[1]].buttons.pass:Click()
+    win.views[cards[2]].buttons.pass:Click()
+    W.advance(0.35)
+    T.ok(whole(W, win, cards[3]), "the third card waits, whole in sight")
+    -- Fourteen of the raid pick Need on the first two cards: each gains fourteen rows and pushes the third down.
+    for n = 1, 2 do
+        local infos = {}
+        for i = 1, 14 do
+            infos[i] = rollInfo(G, { "Raider" .. i .. " Ashvale", "Player-1-1" .. i, "WARRIOR" }, "NeedMainSpec")
+        end
+        W.setDrop(9, n, drop(G, W, n, infos))
+    end
+    T.ok(win.content:GetHeight() > 2 * 14 * 21, "the cards above grew")
+    T.ok(win.scroll:GetVerticalScroll() > 0, "the rolls scrolled")
+    T.ok(whole(W, win, cards[3]), "the waiting card is back in sight, whole")
+end)
+
+T.it("back from Recent rolls or Settings, the waiting card is in sight (R45)", function()
+    local G, W, ns, win = setup()
+    stubViews(G, ns)
+    local cards = {}
+    for n = 1, 4 do
+        cards[n] = roll(W, ns, n)
+        win.views[cards[n]].buttons.pass:Click()
+    end
+    cards[5] = roll(W, ns, 5)
+    W.advance(0.35)
+    T.ok(win.scroll:GetVerticalScroll() > 0)
+    T.ok(whole(W, win, cards[5]), "the fifth card waits at the bottom, in sight")
+    local ways = {
+        { "the back arrow", function() win.head.back:Click() end },
+        { "the clock again", function() win.head.clock:Click() end },
+        { "the pill", function() win.head.pill.hit:Click() end },
+        { "ns.UI.Open", function() ns.UI.Open("rolls") end },
+    }
+    for _, way in ipairs(ways) do
+        win.head.clock:Click()
+        T.eq(ns.UI.View(), "recent")
+        T.eq(win.scroll:GetVerticalScroll(), 0, "Recent rolls from its top")
+        way[2]()
+        T.eq(ns.UI.View(), "rolls", way[1])
+        T.ok(whole(W, win, cards[5]), way[1] .. ": the waiting card in sight")
+    end
+    win.head.gear:Click()
+    win.head.gear:Click()
+    T.ok(whole(W, win, cards[5]), "from Settings too")
+end)
+
+T.it("a new size keeps the waiting card in sight (R45)", function()
+    local G, W, ns, win = setup()
+    local cards = {}
+    for n = 1, 3 do
+        cards[n] = roll(W, ns, n)
+        win.views[cards[n]].buttons.pass:Click()
+    end
+    cards[4] = roll(W, ns, 4)
+    W.advance(0.35)
+    T.eq(win.scroll:GetVerticalScroll(), 0, "all four fit at 100 %")
+    ns.Set("scale", 1.3)
+    T.ok(win.content:GetHeight() > win.scroll:GetHeight(), "at 130 % they do not")
+    T.ok(whole(W, win, cards[4]), "the waiting card stays whole in sight")
+end)
+
+T.it("a card that goes above the waiting card keeps it in sight (R45)", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3)
+    local cards = {}
+    for n = 1, 5 do cards[n] = roll(W, ns, n) end
+    W.items[AXE + 5], W.items[AXE + 6] = W.items[AXE], W.items[AXE]
+    for n = 6, 7 do
+        W.addRoll(n, { link = W.itemLink(AXE + n - 1, "Axe " .. n, 3), name = "Axe " .. n, texture = 135348 })
+        cards[n] = ns.Rolls.Cards()[n]
+    end
+    W.advance(0.35)
+    for n = 1, 3 do win.views[cards[n]].buttons.pass:Click() end
+    T.eq(at(W, win, win.views[cards[4]]), 32, "the first waiting card at the top of what shows")
+    -- The card at the top goes (forgotten): the rest move up, the first waiting card with them, out of sight.
+    ns.Rolls.Forget(cards[1])
+    T.eq(at(W, win, win.views[cards[4]]), 32, "it is brought back to the top")
+    T.ok(whole(W, win, cards[4]))
+end)
+
+T.it("a bigger group keeps the waiting card in sight (R45)", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3)
+    W.setGroup(nil) -- on their own: a card is the player's row alone
+    local cards = {}
+    for n = 1, 4 do cards[n] = roll(W, ns, n) end
+    for n = 1, 3 do win.views[cards[n]].buttons.pass:Click() end
+    W.advance(0.35)
+    T.eq(win.content:GetHeight(), 3 * 87 + 117 + 3, "four small cards fit")
+    W.setGroup(party()) -- four more rows on every card push the waiting one down
+    T.ok(win.content:GetHeight() > win.scroll:GetHeight())
+    T.ok(whole(W, win, cards[4]), "it stays whole in sight")
+end)
+
+T.it("a late decision that unfolds a card above the waiting one keeps it in sight (R45)", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3)
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    local a = roll(W, ns, 1)
+    win.views[a].buttons.greed:Click()
+    W.advance(30)
+    local c, d = roll(W, ns, 3), roll(W, ns, 4)
+    win.views[c].buttons.pass:Click()
+    win.views[d].buttons.pass:Click()
+    local b = roll(W, ns, 2) -- waits on the player, under the two the player passed on
+    W.advance(36)
+    T.eq(a.status, "ended")
+    W.advance(4)
+    T.eq(win.views[a]:Height(), 26, "the ended card folded under DONE")
+    T.ok(whole(W, win, b))
+    decide(G, W, 1, ORLEN, 19, { startTime = began })
+    T.eq(a.status, "decided", "decided late (R21)")
+    T.ok(win.views[a]:Height() > 26, "it comes back whole, above the waiting card")
+    T.ok(whole(W, win, b), "the waiting card is still whole in sight")
+end)
+
+T.it("after a wheel notch, a new waiting card comes into sight (R45)", function()
+    local G, W, ns, win = setup()
+    local cards = {}
+    for n = 1, 4 do
+        cards[n] = roll(W, ns, n)
+        win.views[cards[n]].buttons.pass:Click()
+    end
+    cards[5] = roll(W, ns, 5)
+    W.advance(0.35)
+    -- The player looks back one notch, passes on the fifth card, and a new roll comes.
+    win.scroll:_fire("OnMouseWheel", 1)
+    win.views[cards[5]].buttons.pass:Click()
+    W.items[AXE + 5] = W.items[AXE]
+    W.addRoll(6, { link = W.itemLink(AXE + 5, "Sixth axe", 3), name = "Sixth axe", texture = 135348 })
+    local sixth = ns.Rolls.Cards()[6]
+    T.ok(ns.Rolls.AwaitsMe(sixth))
+    T.ok(whole(W, win, sixth), "the new waiting card comes into sight, whole")
+    W.advance(30)
+    T.ok(whole(W, win, sixth), "and stays")
+end)
+
+T.it("no fold under a hovering mouse while a card waits; it folds once the mouse leaves (R45)", function()
+    local G, W, ns, win = setup()
+    local a, b = roll(W, ns, 1), roll(W, ns, 2)
+    win.views[a].buttons.pass:Click()
+    W.advance(0.35)
+    local need = win.views[b].buttons.need
+    local y = span(W, win, need) + 5 -- the mouse rests on the second card's Need button
+    win._mouseOver = true
+    decide(G, W, 1, ORLEN, 19)
+    for _ = 1, 50 do W.advance(0.1) end
+    T.eq(win.views[a]:Height(), 171, "five seconds on, the decided card is still whole")
+    T.ok(under(W, win, need, y), "and the Need button is where the mouse is")
+    win._mouseOver = false
+    W.advance(0.1)
+    T.eq(win.views[a]:Height(), 26, "the mouse gone, the card folds")
+    T.no(under(W, win, need, y), "and the cards move up")
+    -- With no card waiting, a fold goes ahead under the mouse: there is no roll to mis-click.
+    local c = roll(W, ns, 3)
+    win._mouseOver = true
+    win.views[b].buttons.pass:Click()
+    win.views[c].buttons.pass:Click()
+    decide(G, W, 2, ORLEN, 20)
+    W.advance(4.1)
+    T.eq(win.views[b]:Height(), 26, "folded with the mouse over the window")
+end)
+
+T.it("a late decision under a hovering mouse unfolds the card once the mouse leaves (R45)", function()
+    local G, W, ns, win = setup()
+    local washes = {}
+    ns.Fx.Wash = function(tex) washes[#washes + 1] = tex end
+    local began = G.C_LootHistory.GetLootHistoryTime()
+    local a = roll(W, ns, 1)
+    win.views[a].buttons.greed:Click()
+    W.advance(30)
+    local b = roll(W, ns, 2)
+    W.advance(36)
+    W.advance(4)
+    T.eq(win.views[a]:Height(), 26, "the ended card folded")
+    win._mouseOver = true
+    decide(G, W, 1, ORLEN, 19, { startTime = began })
+    T.eq(a.status, "decided")
+    T.eq(win.views[a]:Height(), 26, "under the mouse, with a card waiting, it stays folded")
+    T.eq(W.plain(win.views[a].foldWinner:GetText() or ""), "Orlen", "its line names the late winner")
+    T.eq(#washes, 0)
+    W.advance(10)
+    T.eq(win.views[a]:Height(), 26)
+    win._mouseOver = false
+    W.advance(0.1)
+    T.ok(win.views[a]:Height() > 26, "the mouse gone, it comes back whole")
+    T.eq(#washes, 1, "with the winner's wash")
+    W.advance(3.8)
+    T.ok(win.views[a]:Height() > 26, "whole for 4 s from then, not from the decision")
+    W.advance(0.3)
+    T.eq(win.views[a]:Height(), 26, "then it folds again")
+    T.eq(b.status, "live")
+end)
+
+T.it("right after the player's pick, nothing scrolls under the mouse for a second (R45)", function()
+    local G, W, ns, win = setup()
+    local cards = {}
+    for n = 1, 5 do cards[n] = roll(W, ns, n) end
+    W.advance(0.35)
+    for n = 1, 3 do
+        win.views[cards[n]].buttons.pass:Click()
+        W.advance(0.1)
+    end
+    T.eq(win.scroll:GetVerticalScroll(), 0, "the fourth card waits whole in sight")
+    -- The mouse is on the fourth card's Pass button and clicks it; the first card is decided right after.
+    local pass = win.views[cards[4]].buttons.pass
+    local y = span(W, win, pass) + 11
+    win._mouseOver = true
+    pass:Click()
+    W.fire("CANCEL_LOOT_ROLL", 4)
+    W.advance(0.05)
+    W.setDrop(9, 1, drop(G, W, 1, {}, { allPassed = true }))
+    T.eq(cards[1].status, "decided")
+    W.advance(0.05)
+    T.eq(win.scroll:GetVerticalScroll(), 0, "nothing scrolls under the mouse that has just clicked")
+    T.no(under(W, win, win.views[cards[5]].buttons.pass, y), "no button of the fifth card under it")
+    T.no(whole(W, win, cards[5]), "the fifth card waits below, for now")
+    W.advance(0.85)
+    T.eq(win.scroll:GetVerticalScroll(), 0, "still nothing just before the second is up")
+    W.advance(0.1)
+    T.ok(whole(W, win, cards[5]), "a second after the pick, the waiting card comes into sight")
+
+    -- The mouse leaving ends the wait at once.
+    local G2, W2, ns2, win2 = setup()
+    local more = {}
+    for n = 1, 5 do more[n] = roll(W2, ns2, n) end
+    for n = 1, 3 do win2.views[more[n]].buttons.pass:Click() end
+    W2.advance(0.35)
+    win2._mouseOver = true
+    win2.views[more[4]].buttons.pass:Click()
+    W2.advance(0.3)
+    T.no(whole(W2, win2, more[5]), "held while the mouse is there")
+    win2._mouseOver = false
+    W2.advance(0.01)
+    T.ok(whole(W2, win2, more[5]), "the mouse gone: in sight at once")
+end)
+
+T.it("Recent rolls and Settings show a waiting card in the pill, which leads back (R45)", function()
+    local G, W, ns, win = setup()
+    stubViews(G, ns)
+    local card = roll(W, ns, 1)
+    W.advance(0.35)
+    local head = win.head
+    local function pillColor() return { head.pill.parts[1]:GetVertexColor() } end
+    T.ok(head.pill:IsShown())
+    same({ head.count:GetTextColor() }, { ns.Theme.Color("dim") }, "in the rolls: the mockup's grey")
+    same(pillColor(), { ns.Theme.Color("hair") }, "on white at 10 %")
+    for _, view in ipairs({ "recent", "settings" }) do
+        ns.UI.Open(view)
+        T.eq(ns.UI.View(), view)
+        T.ok(head.pill:IsShown(), view .. ": the count shows")
+        T.eq(text(W, head.count), "1")
+        same({ head.count:GetTextColor() }, { ns.Theme.Accent() }, view .. ": the number in the accent")
+        local r, g, b, a = ns.Theme.Color("accentWash")
+        same(pillColor(), { r, g, b }, view .. ": on the accent's wash")
+        T.near(pillColor()[4], a, 1e-9)
+        head.pill.hit:Click()
+        T.eq(ns.UI.View(), "rolls", view .. ": a click on the pill leads back to the rolls")
+        T.ok(whole(W, win, card))
+    end
+    -- A live card that no longer waits on the player: the count stays, grey, in Recent rolls too.
+    win.views[card].buttons.pass:Click()
+    ns.UI.Open("recent")
+    T.ok(head.pill:IsShown())
+    same({ head.count:GetTextColor() }, { ns.Theme.Color("dim") }, "nothing waits: grey")
+    -- No live card: no pill.
+    decide(G, W, 1, ORLEN, 19)
+    T.no(head.pill:IsShown())
+end)
+
+T.it("with 10 s left on a waiting card, the window goes back to the rolls by itself (R45)", function()
+    local G, W, ns, win = setup()
+    stubViews(G, ns)
+    local card = roll(W, ns, 1)
+    ns.UI.Open("recent")
+    for _ = 1, 49 do W.advance(1) end
+    T.eq(ns.UI.View(), "recent", "49 s in, still Recent rolls")
+    W.advance(1)
+    T.eq(ns.UI.View(), "rolls", "10 s left: the rolls")
+    T.ok(whole(W, win, card))
+    T.eq(ns.UI.Open("recent"), false, "another view does not open now")
+    T.eq(ns.UI.View(), "rolls")
+    T.eq(ns.UI.Toggle("settings"), false)
+    T.eq(ns.UI.View(), "rolls")
+    win.head.clock:Click()
+    T.eq(ns.UI.View(), "rolls", "nor through the clock")
+    -- Once the player has picked, the views open again.
+    win.views[card].buttons.pass:Click()
+    T.eq(ns.UI.Open("recent"), true)
+    T.eq(ns.UI.View(), "recent")
 end)

@@ -5,9 +5,16 @@
 --  card is open), Recent rolls and Settings (Task 12's views, registered here). It opens on every new roll,
 --  closes itself `closeAfter` seconds after the last roll is decided (the mouse over it keeps it open), plays
 --  the chime when the player wins, remembers where it was dragged and follows the size setting.
+--  A card that waits on the player is never left out of sight (R45, "Keeping the waiting cards in sight"): the
+--  rolls bring the oldest of them whole into view after every change and on every return to them, nothing moves
+--  under the mouse right after the player's own pick, and no fold happens under it while a card waits. The count
+--  pill shows in every view, in the accent outside the rolls while a card waits there, and a click on it leads
+--  back; with URGENT seconds left on such a card the window goes back to the rolls by itself.
 --    TuttiFrame (ns.UI.win)          UIParent's child, strata HIGH, kept on screen, moved by its header
 --    ns.UI.Open(view) -> ok          "rolls" (the default), "recent" or "settings"; it rises when it was
---                                    hidden. A view nobody registered does not open (false).
+--                                    hidden. A view nobody registered does not open (false); nor does another
+--                                    view while a card that waits on the player has URGENT seconds or less
+--                                    left: the rolls show instead (false).
 --    ns.UI.Toggle(view) -> ok        closes the window when it shows `view`, else opens `view`
 --    ns.UI.Close() -> ok             sinks and hides it and forgets the decided cards; never while a card
 --                                    waits on the player: it shows the rolls instead (false)
@@ -53,6 +60,8 @@ local DROP_TOP, DROP_BOTTOM, DROP_ROWS = 46, 26, 40 / 64
 
 -- Seconds.
 local FOLD_AFTER = 4
+local HOLD = 1     -- after the player's own pick, the rolls do not scroll under the mouse for this long
+local URGENT = 10  -- a card that waits on the player with this little time left brings the rolls back
 local EPSILON = 1e-6 -- times are sums of floats: "4 s after" is 4 to within this
 
 local SCALE_MIN, SCALE_MAX = 0.5, 2 -- a size outside this (a damaged setting) reads as 100 %
@@ -70,6 +79,8 @@ local current = "rolls"    -- the view shown
 local order = {}           -- the cards, in arrival order
 local views = {}           -- card -> its view
 local folded = {}          -- card -> true while it is a line under "DONE"
+local unfolding = {}       -- card -> its late decision (R21) unfolds it once the mouse lets folds happen
+local wholeSince = {}      -- card -> when it last came back whole from a fold: it stays whole FOLD_AFTER from then
 local awaited = {}         -- card -> whether it waited on the player when the window last looked
 local chimed = setmetatable({}, { __mode = "k" }) -- card -> the chime played for it
 local stalled = setmetatable({}, { __mode = "k" }) -- view -> its Tick failed: it ticks no more until reused
@@ -80,7 +91,9 @@ local countdown            -- { total, left, endsAt, paused } while the window c
 local closing              -- the Sink while the window fades out
 local closingByItself      -- that fade is the countdown's (not a close the player asked for)
 local contentHeight, visibleHeight = 0, 0
-local byHand = false       -- the player has scrolled the rolls since the window last opened
+local byHand = false       -- the player has scrolled the rolls with the wheel (see `reveal`)
+local pickedAt             -- GetTime() of the player's last own pick (see `reveal`)
+local heldScroll = false   -- a reveal waits for the mouse (see `reveal`); it is done when the hold ends
 local applied = 1          -- the size last given to the window (a new frame's scale is 1)
 
 -------------------------------------------------------------------------------
@@ -117,9 +130,21 @@ local function allOver()
     return true
 end
 
+-- A card that waits on the player: its roll buttons show.
+local function waits(card) return Rolls.AwaitsMe(card) end
+
 local function anyAwaits()
     for _, card in ipairs(order) do
-        if Rolls.AwaitsMe(card) then return true end
+        if waits(card) then return true end
+    end
+    return false
+end
+
+-- A card that waits on the player has URGENT seconds or less left: the rolls are where the player has to be.
+-- (The oldest waiting card is the first to get there, unless a newer roll is shorter: any of them counts.)
+local function urgent()
+    for _, card in ipairs(order) do
+        if waits(card) and Rolls.TimeLeft(card) <= URGENT + EPSILON then return true end
     end
     return false
 end
@@ -259,11 +284,23 @@ head.back:SetPoint("LEFT", PAD_LEFT, 0)
 head.back:Hide()
 head.title = W.Text(items, "title", "text")
 
--- The count of live cards (.ct): a pill of white at 10 %, the number bold 10.5 in the dim grey.
+-- The count of live cards (.ct): a pill of white at 10 %, the number bold 10.5 in the dim grey. A click on it leads
+-- to the rolls, to the card that waits on the player (drawHeader colours it).
 head.pill = W.Pill(items, PILL_H, "hair")
 head.pill:SetPoint("LEFT", head.title, "RIGHT", GAP, 0)
 head.count = newText(head.pill, "title", PILL_SIZE)
 head.count:SetPoint("CENTER")
+head.pill.hit = CreateFrame("Button", nil, head.pill)
+head.pill.hit:SetAllPoints()
+head.pill.hit:RegisterForClicks("LeftButtonUp")
+head.pill.hit:SetScript("OnClick", function()
+    byHand = false -- the player asks for the rolls: the waiting card comes into sight whatever they scrolled
+    UI.Open("rolls")
+end)
+head.pill.hit:SetScript("OnEnter", function(self)
+    if current ~= "rolls" then W.Tip(self, TIP_BACK) end
+end)
+head.pill.hit:SetScript("OnLeave", function(self) W.HideTip(self) end)
 head.pill:Hide()
 
 -- On the right: clock, gear, close; before them "closes in 7s" or "kept open".
@@ -449,8 +486,12 @@ local function scrolled() return ns.Clear(scroll:GetVerticalScroll(), "number") 
 
 local function hovered() return ns.Clear(win:IsMouseOver(), "boolean") == true end
 
+local reveal -- below: brings the oldest card that waits on the player whole into sight
+
 -- The window as high as its view, up to 70 % of the screen (the scroll frame shows the rest). The screen's
--- share is in UIParent's units, the window's height in its own, scaled ones.
+-- share is in UIParent's units, the window's height in its own, scaled ones. Every layout of the rolls ends with
+-- the reveal, so a change anywhere in them (a card added, changed, decided, folded or gone, the group, the size)
+-- never leaves the card the player has to roll on out of sight.
 local function relayout()
     local height
     if current == "rolls" then
@@ -469,32 +510,61 @@ local function relayout()
     win:SetHeight(HEAD_H + visibleHeight)
     fitDrop(HEAD_H + visibleHeight)
     scrollTo(scrolled())
+    if current == "rolls" then reveal() end
 end
 
--- The cards the player has to roll on are never pushed out of sight: when one comes, the first of them, the
--- oldest still waiting, is brought into sight with its top at the top of what shows (a boss drop lands at once,
--- and the player works down from the top), as far as the scroll goes. A card already whole in sight is left
--- where it is: the buttons under the mouse do not jump when a roll comes. Nothing scrolls by itself once the
--- player has scrolled the rolls by hand since the window last opened.
-local function revealWaiting()
-    if byHand or current ~= "rolls" then return end
+-------------------------------------------------------------------------------
+--  Keeping the waiting cards in sight (R45)
+-------------------------------------------------------------------------------
+-- Do px `top` to `bottom` of the rolls show, between the header and the window's bottom, at the scroll now? A
+-- stretch higher than what shows counts as shown when it starts at the top.
+local function inSight(top, bottom)
+    local offset = scrolled()
+    bottom = min(bottom, top + visibleHeight)
+    return top >= offset - EPSILON and bottom <= offset + visibleHeight + EPSILON
+end
+
+-- A waiting card is in sight while its buttons show whole: the player can roll on it as the rolls stand.
+local function buttonsInSight(card)
+    local from, to = views[card]:ButtonsAt()
+    return from ~= nil and tops[card] ~= nil and inSight(tops[card] + from, tops[card] + to)
+end
+
+-- The player has just picked, with the mouse over the window, and a card still waits: the rolls hold still under
+-- the cursor that has just clicked.
+local function holding()
+    return pickedAt ~= nil and GetTime() - pickedAt < HOLD - EPSILON and hovered() and anyAwaits()
+end
+
+-- The one rule for the rolls' scroll. It runs after every layout of the rolls and on every return to them. The
+-- oldest card that waits on the player is brought whole into sight, its top to the top of what shows (as far as
+-- the scroll goes; a boss drop lands at once and the player works down from the top), and only when it is not
+-- whole in sight already: nothing moves for a card that shows. The player's own scroll (the wheel) holds that off
+-- only while some waiting card's buttons still show; a new waiting card ends it, and so does a new view. For
+-- HOLD seconds after the player's own pick, while the mouse is over the window, the scroll waits (`heldScroll`)
+-- and is done when the mouse leaves or the time is up: the next card's buttons never land under the cursor that
+-- has just clicked.
+function reveal()
+    heldScroll = false
+    if current ~= "rolls" then return end
+    local first
     for _, card in ipairs(order) do
-        local top = tops[card]
-        if not folded[card] and top and Rolls.AwaitsMe(card) then
-            local offset = scrolled()
-            local whole = top >= offset - EPSILON
-                and top + views[card]:Height() <= offset + visibleHeight + EPSILON
-            if not whole then scrollTo(top) end
-            return
+        if waits(card) and not folded[card] and tops[card] then first = card; break end
+    end
+    if not first then return end
+    local top = tops[first]
+    if inSight(top, top + views[first]:Height()) then return end
+    if byHand then
+        for _, card in ipairs(order) do
+            if waits(card) and buttonsInSight(card) then return end
         end
     end
-end
-
--- Tutti's own changes to the rolls (a fold, a card that goes, a decision, the group) can move the first card
--- that waits on the player out of sight while the scroll stays: it is brought back after them.
-local function settle()
-    relayout()
-    revealWaiting()
+    if holding() then
+        heldScroll = true
+        return
+    end
+    byHand = false
+    scrollTo(top)
 end
 
 -------------------------------------------------------------------------------
@@ -521,6 +591,9 @@ local function drawCountdown()
     if share > 0 then head.bar:SetWidth(WIDTH * share) end
 end
 
+-- The count pill shows the live cards in every view. Outside the rolls, while a card there waits on the player, it
+-- is in the accent (the accent's wash, the number in the accent), the only sign of that card in Recent rolls or
+-- Settings; in the rolls it keeps the mockup's grey, as the waiting card shows its own accent there.
 local function drawHeader()
     local onRolls = current == "rolls"
     head.mark:SetShown(onRolls)
@@ -528,12 +601,14 @@ local function drawHeader()
     head.title:SetText(TITLES[current] or current)
     head.title:ClearAllPoints()
     head.title:SetPoint("LEFT", PAD_LEFT + (onRolls and MARK or BUTTON) + GAP, 0)
-    local live = onRolls and liveCount() or 0
+    local live = liveCount()
     head.pill:SetShown(live > 0)
     if live > 0 then
+        local alert = not onRolls and anyAwaits()
         font(head.count, "title", PILL_SIZE)
         head.count:SetText(live)
-        head.count:SetTextColor(Th.Color("dim"))
+        head.count:SetTextColor(Th.Color(alert and "accent" or "dim"))
+        head.pill:SetPillColor(alert and "accentWash" or "hair")
         head.pill:SetWidth(max(PILL_MIN, ceil(head.count:GetUnboundedStringWidth()) + 2 * PILL_PAD))
     end
     paintButton(head.clock, current == "recent")
@@ -590,28 +665,51 @@ end
 -------------------------------------------------------------------------------
 --  Folding
 -------------------------------------------------------------------------------
--- A decided or ended card folds 4 s after its decision while another card is still whole; of several due at
--- once the earliest decided folds first, so the last decided card is the one that stays. -> any folded
+-- While the mouse is over the window and a card waits on the player, no card folds or unfolds: either moves the
+-- cards, and with them a waiting card's buttons, under the mouse. What was held happens when the mouse leaves or no
+-- card waits any more.
+local function foldsHeld() return hovered() and anyAwaits() end
+
+-- A folded card decided late (R21) comes back whole, and stays whole FOLD_AFTER seconds from then.
+local function unfold(card)
+    unfolding[card] = nil
+    if not folded[card] then return end
+    folded[card] = nil
+    wholeSince[card] = GetTime()
+    views[card]:SetFolded(false)
+end
+
+-- A decided or ended card folds 4 s after its decision (or after it came back whole) while another card is still
+-- whole; of several due at once the earliest folds first, so the last decided card is the one that stays. Held
+-- under the mouse (foldsHeld). -> any folded or unfolded
 local function refold()
+    if foldsHeld() then return false end
+    local changed = false
+    for _, card in ipairs(order) do
+        if unfolding[card] then
+            unfold(card)
+            changed = true
+        end
+    end
     local open = 0
     for _, card in ipairs(order) do
         if not folded[card] then open = open + 1 end
     end
-    if open < 2 then return false end
+    if open < 2 then return changed end
     local now, due = GetTime(), nil
     for i, card in ipairs(order) do
         local at = card.decidedAt
+        if type(at) == "number" and wholeSince[card] then at = max(at, wholeSince[card]) end
         if not folded[card] and over(card) and type(at) == "number" and now - at >= FOLD_AFTER - EPSILON then
             due = due or {}
             due[#due + 1] = { card = card, at = at, i = i }
         end
     end
-    if not due then return false end
+    if not due then return changed end
     table.sort(due, function(a, b)
         if a.at ~= b.at then return a.at < b.at end
         return a.i < b.i
     end)
-    local changed = false
     for _, entry in ipairs(due) do
         if open > 1 then
             folded[entry.card] = true
@@ -695,16 +793,21 @@ local function pageOf(name)
     return frame
 end
 
+-- A new view starts at its top: the player's own scroll was of another, and the rolls bring their waiting card
+-- into sight again on the way back (the layout's reveal).
 local function switchTo(name)
     current = name
     rolls:SetShown(name == "rolls")
     for other, page in pairs(pages) do page:SetShown(other == name) end
+    byHand = false
     scroll:SetVerticalScroll(0)
 end
 
 function UI.Open(name)
     if name == nil then name = "rolls" end
     if name ~= "rolls" and not pageOf(name) then return false end
+    local refused = name ~= "rolls" and urgent() -- a roll about to end: the rolls instead
+    if refused then name = "rolls" end
     local appearing = not win:IsShown()
     stayOpen()
     if appearing then byHand = false end
@@ -718,7 +821,7 @@ function UI.Open(name)
     relayout()
     drawHeader()
     if appearing then Fx.Rise(win) end
-    return true
+    return not refused
 end
 
 function UI.Close()
@@ -763,8 +866,9 @@ head:SetScript("OnDragStop", function()
     savePosition()
 end)
 
--- Only a wheel that moved the rolls counts as the player's own scroll: a notch at either end, or one in Recent
--- rolls or Settings, leaves the rolls coming into sight by themselves.
+-- Only a wheel that moved the rolls counts as the player's own scroll (`byHand`, see `reveal`): a notch at either
+-- end, or one in Recent rolls or Settings, leaves the rolls bringing their waiting card into sight. The wheel
+-- itself never brings it back: the player may look elsewhere until the rolls change.
 scroll:SetScript("OnMouseWheel", function(_, delta)
     delta = ns.Clear(delta, "number")
     if not delta then return end
@@ -773,9 +877,10 @@ scroll:SetScript("OnMouseWheel", function(_, delta)
     if current == "rolls" and scrolled() ~= before then byHand = true end
 end)
 
--- Every frame while the window shows: the cards' seconds and bars, the folds, the countdown, and Polestar's
--- note until it exists. Each runs protected, so one that fails stops none of the others (the window always
--- closes); a card whose Tick failed is reported once and ticks no more.
+-- Every frame while the window shows: the cards' seconds and bars, the folds, a reveal that waited for the mouse,
+-- the way back to the rolls, the countdown, and Polestar's note until it exists. Each runs protected, so one that
+-- fails stops none of the others (the window always closes); a card whose Tick failed is reported once and ticks
+-- no more.
 local function tickCards()
     for _, card in ipairs(order) do
         local view = views[card]
@@ -784,7 +889,16 @@ local function tickCards()
 end
 
 local function foldStep()
-    if refold() then settle() end
+    if refold() then relayout() end
+end
+
+local function holdStep()
+    if heldScroll and not holding() then reveal() end
+end
+
+-- Recent rolls or Settings while a card that waits on the player is about to end: back to the rolls.
+local function urgentStep()
+    if current ~= "rolls" and urgent() then UI.Open("rolls") end
 end
 
 local function countdownStep()
@@ -797,6 +911,8 @@ end
 win:SetScript("OnUpdate", function()
     tickCards()
     ns.Safe(foldStep)
+    ns.Safe(holdStep)
+    ns.Safe(urgentStep)
     ns.Safe(countdownStep)
     if not note then ns.Safe(findNote) end
 end)
@@ -813,55 +929,56 @@ end)
 -------------------------------------------------------------------------------
 --  Wiring
 -------------------------------------------------------------------------------
--- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden).
--- When it waits on the player, the first card that does comes to the top.
+-- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden). A
+-- new card that waits on the player ends the player's own scroll (`byHand`): the layout's reveal brings the oldest
+-- waiting card into sight.
 ns.Listen("CARD_ADDED", function(card)
     if type(card) ~= "table" or views[card] then return end
     local view = Card.Acquire(rolls)
     views[card], stalled[view] = view, nil
     order[#order + 1] = card
     view:Bind(card)
-    awaited[card] = Rolls.AwaitsMe(card)
+    awaited[card] = waits(card)
+    if awaited[card] then byHand = false end
     refold()
     UI.Open("rolls")
-    if awaited[card] then revealWaiting() end
 end)
 
--- The card draws what changed. A card that starts waiting on the player (its roll joined a card the history
--- made, or a bind confirmation gave the pick back) brings the rolls up, hidden or not, with the first card that
--- waits on the player at the top.
+-- The card draws what changed, and the rolls are laid out again (the reveal with them). The player's own pick
+-- starts the HOLD under the mouse. A card that starts waiting on the player (its roll joined a card the history
+-- made, or a bind confirmation gave the pick back) is a new waiting card: it brings the rolls up, hidden or not.
 ns.Listen("CARD_CHANGED", function(card, changes)
     local view = views[card]
     if not view then return end
+    if type(changes) == "table" and changes.mine and card.mine ~= nil then pickedAt = GetTime() end
     view:Update(changes)
-    local awaits = Rolls.AwaitsMe(card)
+    local awaits = waits(card)
     local started = awaits and not awaited[card]
     awaited[card] = awaits
     if started then
+        byHand = false
         UI.Open("rolls")
-        revealWaiting()
     else
         relayout()
         drawHeader()
     end
 end)
 
--- A result. A card decided after it ended (R21) and already folded comes back whole and folds again 4 s after
--- this decision; the countdown starts over, so the result stays on screen its whole time, and a fade-out
--- of the countdown's own is called off for it. The chime when the player won.
+-- A result. A card decided after it ended (R21) and already folded comes back whole (once the mouse lets folds
+-- happen) and folds again 4 s after that; the countdown starts over, so the result stays on screen its whole time,
+-- and a fade-out of the countdown's own is called off for it. The chime when the player won.
 ns.Listen("CARD_DECIDED", function(card)
     local view = views[card]
     if not view then return end
     if folded[card] then
-        folded[card] = nil
-        view:SetFolded(false)
+        if foldsHeld() then unfolding[card] = true else unfold(card) end
     end
     if card.status == "decided" and not chimed[card] and playerWon(card) then
         chimed[card] = true
         if ns.Get("sound") == "chime" then PlaySoundFile(CHIME, "Master") end
     end
     if fading() and closingByItself then stayOpen() end
-    settle()
+    relayout()
     updateCountdown(true)
     drawHeader()
 end)
@@ -871,10 +988,11 @@ ns.Listen("CARD_REMOVED", function(card)
     if not view then return end
     Card.Release(view)
     views[card], folded[card], awaited[card], tops[card] = nil, nil, nil, nil
+    unfolding[card], wholeSince[card] = nil, nil
     for i, c in ipairs(order) do
         if c == card then table.remove(order, i); break end
     end
-    settle()
+    relayout()
     updateCountdown()
     drawHeader()
 end)
@@ -882,7 +1000,7 @@ end)
 -- The rows come from the group.
 ns.Listen("GROUP_CHANGED", function()
     for _, card in ipairs(order) do views[card]:Update({}) end
-    settle()
+    relayout()
 end)
 
 ns.Listen("SETTING_CHANGED", function(key)

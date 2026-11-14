@@ -15,6 +15,11 @@ First release.
 - Roll from the card: Need, Greed (Transmog when the game offers it) and Pass. A Need you
   can't make is greyed out with the game's reason. Blizzard's roll popups stay hidden while
   "Roll in Tutti" is on; soulbound items still get Blizzard's own confirmation.
+- A card that waits on you stays in sight: the window scrolls it into view whenever the
+  cards change, nothing moves under the mouse right after your pick, and nothing folds
+  under it while a card waits. In Recent rolls or Settings the count in the header shows the
+  waiting card in the accent colour and leads back, and the window goes back to the rolls by
+  itself 10 seconds before such a roll ends.
 - Decided items fold into one line under "Done" while others are still open. The window
   closes itself after the last roll (5, 10, 20 or 30 seconds, or never), waits while the
   mouse is over it, and a new roll cancels the countdown.
