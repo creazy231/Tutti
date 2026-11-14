@@ -7,6 +7,10 @@
 --    ns.Card.Acquire(parent) -> view   a card view from the pool (or built in `parent`), shown, in `parent`, 300 px
 --                                      wide, its divider shown; anchor it
 --    ns.Card.Release(view)             back to the pool: its effects stop, it is hidden, unanchored, unbound
+--    ns.Card.Waits(card)               the card waits on the player here: it awaits their pick (ns.Rolls.AwaitsMe)
+--                                      and the player rolls in Tutti (ns.Popups.RollInTutti). Only then does a
+--                                      view show the waiting look (accent edge, "Your pick", the buttons); the
+--                                      window asks the same for its close button, Close, the reveal and reopening
 --    view:Bind(card)                   show a card as it is, without effects
 --    view:Update(changes)              the card as it is now (after CARD_CHANGED; after GROUP_CHANGED with {}),
 --                                      with the effects of what is new since the view last drew it: a new pick
@@ -760,6 +764,11 @@ local function paintFold(view, card, winner)
     view.foldNameHit:SetWidth(max(min(full, room), 1))
 end
 
+-- With "Roll in Tutti" off at login Blizzard's popups take the player's pick, and a card shows the group only.
+function Card.Waits(card)
+    return Rolls.AwaitsMe(card) and ns.Popups.RollInTutti() == true
+end
+
 -- The view as its card is now. `rows` may be given (Update has them already). Remembers what it shows.
 local function render(view, rows)
     local card = view.card
@@ -775,7 +784,7 @@ local function render(view, rows)
         paintFold(view, card, winner)
         view.height, view.buttonsTop = FOLD_H, nil
     else
-        local awaits = Rolls.AwaitsMe(card)
+        local awaits = Card.Waits(card)
         paintHead(view, card, winner, awaits)
         view.height = paintBody(view, card, rows, awaits)
     end

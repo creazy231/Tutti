@@ -237,3 +237,19 @@ T.it("the demo asks the client for its items and takes them in when they come", 
     T.ok(changes and changes.item, "the card draws it")
     T.ok(ns.Rolls.AwaitsMe(axe), "and still waits on the player")
 end)
+
+T.it("with Roll in Tutti off at login the demo plays without buttons, to the same finale", function()
+    local G, W, ns, win = setup({ db = { settings = { rollInTutti = false } } })
+    local to = timeline(W)
+    T.eq(ns.Demo.Start(), true)
+    local axe, gloves = ns.Rolls.Cards()[1], ns.Rolls.Cards()[2]
+    for _, card in ipairs({ axe, gloves }) do
+        for kind, button in pairs(win.views[card].buttons) do T.no(button:IsShown(), kind .. ": no button") end
+    end
+    to(3.7)
+    T.eq(axe.mine, "greed", "the script's pick, taken without the button")
+    to(12.3)
+    T.eq(gloves.status, "decided")
+    T.ok(row(ns, gloves, 5).isWinner, "the player wins the gloves")
+    T.eq(#W.rolled, 0, "RollOnLoot never called")
+end)

@@ -130,8 +130,9 @@ local function allOver()
     return true
 end
 
--- A card that waits on the player: its roll buttons show.
-local function waits(card) return Rolls.AwaitsMe(card) end
+-- A card that waits on the player: its roll buttons show (with "Roll in Tutti" off at login, no card waits here:
+-- Blizzard's popups take the pick, and the window closes as it does after a roll).
+local function waits(card) return Card.Waits(card) end
 
 local function anyAwaits()
     for _, card in ipairs(order) do
@@ -1003,6 +1004,22 @@ ns.Listen("GROUP_CHANGED", function()
     relayout()
 end)
 
+-- Whether the player rolls in Tutti may have changed ("Roll in Tutti", or Blizzard's popups switched off): every
+-- card draws its buttons, or none, again. A card that starts waiting so is a new waiting card; the window stays in
+-- the view it shows (Settings, where the switch is).
+local function rollRuleChanged()
+    for _, card in ipairs(order) do
+        views[card]:Update({})
+        local awaits = waits(card)
+        if awaits and not awaited[card] then byHand = false end
+        awaited[card] = awaits
+    end
+    relayout()
+    drawHeader()
+end
+
+ns.Listen("POPUPS_CHANGED", rollRuleChanged)
+
 ns.Listen("SETTING_CHANGED", function(key)
     if key == "scale" then
         if fading() then return end -- on its way out: the next open places it at the new size
@@ -1011,6 +1028,8 @@ ns.Listen("SETTING_CHANGED", function(key)
         relayout()
     elseif key == "closeAfter" then
         updateCountdown(true)
+    elseif key == "rollInTutti" then
+        rollRuleChanged()
     end
 end)
 

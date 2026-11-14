@@ -68,7 +68,8 @@ after the last roll (5, 10, 20 or 30 seconds, or never) · sound when you win (s
 none) · accent (class colour or EllesmereUI's, with EllesmereUI) · size (80 to 130 %).
 
 Turning "Roll in Tutti" on takes effect at once. Turning it off brings Blizzard's popups
-back after a `/reload`; the setting says so and offers a Reload button.
+back after a `/reload`; the setting says so and offers a Reload button. Until then the cards
+keep their buttons; after it you roll in Blizzard's popups and the cards show the group.
 
 ## Compatibility
 

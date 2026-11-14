@@ -10,7 +10,11 @@
 --    ns.Popups.Suppressed()      Blizzard's popups are switched off, from the switch-off until the
 --                                next /reload: turning the setting off does not bring them back
 --    ns.Popups.ReloadNeeded()    the setting is off but the popups were switched off this session
---  Message "POPUPS_CHANGED" when either answer changes.
+--    ns.Popups.RollInTutti()     the player rolls on Tutti's cards: the setting is on, or the popups are
+--                                switched off (until a /reload the cards are then the only way to roll,
+--                                whatever the setting says). Off at login, the popups are Blizzard's and the
+--                                cards show no roll buttons.
+--  Message "POPUPS_CHANGED" when either answer of Suppressed and ReloadNeeded changes.
 --  The way back is not Tutti's to take: GameEvent.RegisterInternalEvent is never called, because a
 --  handler registered by an addon would run tainted. Bringing the popups back takes a /reload. When
 --  GameEvent or its function is missing the popups stay Blizzard's, and Tutti works next to them.
@@ -44,6 +48,10 @@ end
 
 function Popups.ReloadNeeded()
     return switchedOff and not wanted()
+end
+
+function Popups.RollInTutti()
+    return ns.Get("rollInTutti") == true or switchedOff
 end
 
 -- Takes Blizzard's handler for EVENT out of the router. Without GameEvent or its function there is

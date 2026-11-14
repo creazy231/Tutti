@@ -1352,3 +1352,93 @@ T.it("with 10 s left on a waiting card, the window goes back to the rolls by its
     T.eq(ns.UI.Open("recent"), true)
     T.eq(ns.UI.View(), "recent")
 end)
+
+-------------------------------------------------------------------------------
+--  "Roll in Tutti" off: Blizzard's popups take the pick (final review, item 2)
+-------------------------------------------------------------------------------
+-- Every roll button of a card view, hidden?
+local function noButtons(view)
+    for _, button in pairs(view.buttons) do
+        if button:IsShown() then return false end
+    end
+    return true
+end
+
+T.it("with Roll in Tutti off at login, a card shows the group only and the window closes as usual", function()
+    local G, W, ns, win = setup({ db = { settings = { rollInTutti = false } } })
+    T.no(ns.Popups.Suppressed(), "Blizzard's popups are there")
+    T.eq(#W.unregistered, 0)
+    local card = roll(W, ns, 1)
+    W.advance(0.35)
+    local view = win.views[card]
+    T.ok(ns.Rolls.AwaitsMe(card), "the player still has to pick, in Blizzard's popup")
+    T.no(ns.Card.Waits(card), "but not here")
+    T.ok(noButtons(view), "no roll buttons on the card")
+    T.no(view.yours:IsShown(), "no 'Your pick'")
+    T.no(view.edge:IsShown(), "no accent edge")
+    T.eq(text(W, view.time), "60s")
+    T.eq(view:Height(), 171, "the card has no room for buttons")
+    T.ok(win.head.close:IsShown(), "the close button shows")
+    T.eq(ns.UI.Close(), true, "and Close closes the window")
+    W.advance(0.55)
+    T.no(win:IsShown())
+    -- The player's roll joining a card the history made first does not bring the window back either.
+    W.setDrop(9, 2, drop(G, W, 2, { rollInfo(G, ORLEN, "NeedMainSpec") }))
+    T.ok(win:IsShown(), "a new card opens it, as every roll does")
+    ns.UI.Close()
+    W.advance(0.55)
+    roll(W, ns, 2)
+    T.no(win:IsShown(), "a roll that joins it brings nothing back: nothing waits here")
+    -- Recent rolls stays open to the end of a roll the player picks in Blizzard's popup.
+    stubViews(G, ns)
+    ns.UI.Open("recent")
+    for _ = 1, 61 do W.advance(1) end
+    T.eq(ns.UI.View(), "recent")
+    same({ win.head.count:GetTextColor() }, { ns.Theme.Color("dim") }, "the pill is not in the accent")
+end)
+
+T.it("turning Roll in Tutti on brings the buttons at once (final review, item 2)", function()
+    local G, W, ns, win = setup({ db = { settings = { rollInTutti = false } } })
+    local card = roll(W, ns, 1)
+    W.advance(0.35)
+    local view = win.views[card]
+    T.ok(noButtons(view))
+    ns.Set("rollInTutti", true)
+    T.ok(ns.Popups.Suppressed(), "Blizzard's popups go at once")
+    T.ok(view.buttons.need:IsShown() and view.buttons.greed:IsShown() and view.buttons.pass:IsShown(),
+        "the card shows its buttons")
+    T.ok(view.yours:IsShown())
+    T.eq(view:Height(), 201)
+    T.no(win.head.close:IsShown(), "the close button hides")
+    T.eq(win:GetHeight(), 32 + 201, "the window fits the taller card")
+end)
+
+T.it("turning Roll in Tutti off keeps the buttons until a /reload (final review, item 2)", function()
+    local G, W, ns, win = setup()
+    T.ok(ns.Popups.Suppressed())
+    local card = roll(W, ns, 1)
+    W.advance(0.35)
+    ns.Set("rollInTutti", false)
+    T.ok(ns.Popups.ReloadNeeded(), "Blizzard's popups come back only with a /reload")
+    T.ok(win.views[card].buttons.pass:IsShown(), "so the card keeps its buttons: it is the only way to roll")
+    T.no(win.head.close:IsShown())
+    T.eq(ns.UI.Close(), false, "and the window stays")
+    -- After the /reload (the setting off at login) the popups are Blizzard's: no buttons.
+    local G2, W2, ns2, win2 = setup({ db = { settings = { rollInTutti = false } } })
+    local again = roll(W2, ns2, 1)
+    T.ok(noButtons(win2.views[again]))
+end)
+
+T.it("without Blizzard's router the setting alone decides the buttons (final review, item 2)", function()
+    local G, W, ns, win = setup({ noGameEvent = true })
+    T.no(ns.Popups.Suppressed(), "nothing to switch off: Blizzard's popups stay")
+    local card = roll(W, ns, 1)
+    W.advance(0.35)
+    local view = win.views[card]
+    T.ok(view.buttons.pass:IsShown(), "the setting is on: the card's buttons work next to the popups")
+    ns.Set("rollInTutti", false)
+    T.ok(noButtons(view), "off: the buttons go at once (no /reload is needed: the popups never went)")
+    T.ok(win.head.close:IsShown())
+    ns.Set("rollInTutti", true)
+    T.ok(view.buttons.pass:IsShown(), "on again: back")
+end)

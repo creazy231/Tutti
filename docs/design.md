@@ -159,7 +159,8 @@ When a roll starts while Recent rolls or Settings is showing, the window switche
 ### Settings (gear in the header; changes apply at once)
 
 - **Roll in Tutti** (on): Need, Greed and Pass on each card, with Blizzard's roll popups hidden.
-  - Turning it off brings Blizzard's popups back after a reload. The row says so and offers a Reload button.
+  - Turning it off brings Blizzard's popups back after a reload. The row says so and offers a Reload button. Until that reload the cards keep their buttons: they are still the only way to roll.
+  - Off after the reload (or at login), the cards show the group without buttons, "Your pick" or the accent edge, and the close button stays: the player rolls in Blizzard's popups.
   - Turning it on takes effect at once.
 - **Close after the last roll:** 10 seconds. The choices are 5, 10, 20, 30 seconds and Never.
 - **Sound when you win:** Soft chime or None.
