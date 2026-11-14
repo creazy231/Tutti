@@ -7,9 +7,10 @@
 --  the chime when the player wins, remembers where it was dragged and follows the size setting.
 --  A card that waits on the player is never left out of sight (R45, "Keeping the waiting cards in sight"): the
 --  rolls bring the oldest of them whole into view after every change and on every return to them, nothing moves
---  under the mouse right after the player's own pick, and no fold happens under it while a card waits. The count
---  pill shows in every view, in the accent outside the rolls while a card waits there, and a click on it leads
---  back; with URGENT seconds left on such a card the window goes back to the rolls by itself.
+--  under the mouse right after the player's own pick or while that card's buttons show (R50), and no fold happens
+--  under it while a card waits. The count pill shows in every view, in the accent outside the rolls while a card
+--  waits there, and a click on it leads back; with URGENT seconds left on such a card the window goes back to the
+--  rolls by itself.
 --    TuttiFrame (ns.UI.win)          UIParent's child, strata HIGH, kept on screen, moved by its header
 --    ns.UI.Open(view) -> ok          "rolls" (the default), "recent" or "settings"; it rises when it was
 --                                    hidden. A view nobody registered does not open (false); nor does another
@@ -541,10 +542,12 @@ end
 -- oldest card that waits on the player is brought whole into sight, its top to the top of what shows (as far as
 -- the scroll goes; a boss drop lands at once and the player works down from the top), and only when it is not
 -- whole in sight already: nothing moves for a card that shows. The player's own scroll (the wheel) holds that off
--- only while some waiting card's buttons still show; a new waiting card ends it, and so does a new view. For
--- HOLD seconds after the player's own pick, while the mouse is over the window, the scroll waits (`heldScroll`)
--- and is done when the mouse leaves or the time is up: the next card's buttons do not land under the cursor in the
--- moment after its click (a mouse that rests on the window does not hold a card out of sight for longer).
+-- only while some waiting card's buttons still show; a new waiting card ends it, and so does a new view. While the
+-- mouse is over the window the scroll waits (`heldScroll`) as long as that card's buttons show whole (R50): the
+-- player can click it as the rolls stand, and nothing slides under a cursor aiming at it; the scroll is done when
+-- the mouse leaves. With its buttons out of sight it waits only HOLD seconds after the player's own pick, so the
+-- next card's buttons do not land under the cursor in the moment after its click (a mouse that rests on the window
+-- does not hold a card out of sight for longer).
 function reveal()
     heldScroll = false
     if current ~= "rolls" then return end
@@ -560,7 +563,7 @@ function reveal()
             if waits(card) and buttonsInSight(card) then return end
         end
     end
-    if holding() then
+    if (hovered() and buttonsInSight(first)) or holding() then
         heldScroll = true
         return
     end

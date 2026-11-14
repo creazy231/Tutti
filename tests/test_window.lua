@@ -1300,6 +1300,55 @@ T.it("right after the player's pick, nothing scrolls under the mouse for a secon
     T.ok(whole(W2, win2, more[5]), "the mouse gone: in sight at once")
 end)
 
+T.it("a waiting card the player can already click never slides away under the mouse (R50)", function()
+    local G, W, ns, win = setup()
+    local raid = {}
+    for i = 1, 19 do
+        raid[i] = { unit = "raid" .. i, name = "Raider" .. i .. " Ashvale", classFile = "WARRIOR",
+            guid = "Player-1-1" .. i }
+    end
+    raid[20] = { unit = "raid20", isPlayer = true }
+    W.setGroup(raid, { raid = true })
+    local cards = {}
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end
+    -- 13, 12 and 12 of the raid pick Greed: each card lists them, and the cards run far past the window's bottom.
+    for n = 1, 3 do
+        local infos = {}
+        for i = 1, ({ 13, 12, 12 })[n] do
+            infos[i] = rollInfo(G, { "Raider" .. i .. " Ashvale", "Player-1-1" .. i, "WARRIOR" }, "Greed")
+        end
+        W.setDrop(9, n, drop(G, W, n, infos))
+    end
+    W.advance(0.1)
+    T.eq(win.scroll:GetVerticalScroll(), 0)
+    -- The mouse over the window, the player passes on the first card and aims at the second card's Need, which shows
+    -- whole while the card itself runs past the window's bottom.
+    win._mouseOver = true
+    win.views[cards[1]].buttons.pass:Click()
+    W.fire("CANCEL_LOOT_ROLL", 1)
+    local need = win.views[cards[2]].buttons.need
+    local top, bottom = span(W, win, need)
+    T.ok(top >= 32 and bottom <= 32 + win.scroll:GetHeight(), "the second card's buttons show whole")
+    T.no(whole(W, win, cards[2]), "the second card does not")
+    local aim = (top + bottom) / 2
+    local others = win.views[cards[3]].buttons
+    for _ = 1, 15 do -- 1.5 s, the mouse resting on the window
+        W.advance(0.1)
+        T.eq(win.scroll:GetVerticalScroll(), 0, "nothing scrolls")
+        T.ok(under(W, win, need, aim), "the second card's Need stays where the player aims")
+        for kind, button in pairs(others) do
+            T.no(button:IsShown() and under(W, win, button, aim),
+                "the third card's " .. kind .. " never comes under it")
+        end
+    end
+    W.advance(5)
+    T.eq(win.scroll:GetVerticalScroll(), 0, "as long as the mouse rests there")
+    -- The mouse leaves: the reveal brings the second card whole into sight.
+    win._mouseOver = false
+    W.advance(0.01)
+    T.ok(whole(W, win, cards[2]), "the second card whole in sight")
+end)
+
 T.it("Recent rolls and Settings show a waiting card in the pill, which leads back (R45)", function()
     local G, W, ns, win = setup()
     stubViews(G, ns)

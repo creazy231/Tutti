@@ -212,6 +212,7 @@ Ruling (final review, item 12): the README's "so no roll is missed" (the CHANGEL
 Final fix wave, items 12 and 13 done: three in-game checklist entries (a three-item drop at 130 %, Recent rolls opened while a card waits, "Roll in Tutti" off after a /reload), the README's guarantee, curseforge.md's line, CLAUDE.md's one ruled exception to the protected dispatch (the menu's bare `GLOBAL_MOUSE_DOWN`, its frame's only handler); the stale ledger lines on Recent's open rows and the demo's gloves marked superseded; R17, R23 and R30 written down.
 Ruling: a card that starts waiting because the rule turns on ("Roll in Tutti", or Blizzard's popups switched off) is a new waiting card like one whose roll joins its card: it ends the player's own scroll and, while the window is closed, brings the rolls back; with the window open (in Settings, where the switch is) the window stays in its view and the pill shows the card. — cost if wrong: none.
 Final fix wave done (items 1 to 16; `PUBLISHING.md`, git-ignored, corrected locally): 13 commits on 2336eb2 (`luajit tests/run.lua` → 434 passed, 0 failed, 33 tests more than the 401 before and 2 rewritten; `luajit tests/syntax.lua` → syntax ok; `python3 -I tests/test_media.py` → media ok (24 textures, 24 names in the code)); the reviewer's probes all come out right; the three films and the nine render scenes draw byte for byte what 2336eb2 drew, and shot 03 was re-rendered for its copy.
+R50 (the controller's ruling, from the final re-review's N1): while the mouse is over the window, the reveal waits as long as the oldest waiting card's buttons show whole (the player can click it as the rolls stand) and is done when the mouse leaves; R45's 1 s hold after the player's own pick applies only when that card's buttons are out of sight; the rest of R45 stands. — the re-review's probe: a raid of 20, three waiting cards with 13, 12 and 12 Greeds; the player passed on the first with the mouse over the window and aimed at the second card's Need (444-467 px, whole, the card running past the window's bottom); at 1 s the scroll went from 0 to 385 and the third card's buttons landed at 453-476, under the cursor aiming at 456 — cost if wrong: a waiting card whose buttons show but whose rows run past the window's bottom stays cut off while the mouse rests on the window.
 
 ## In-game checklist
 
@@ -288,8 +289,8 @@ Lua errors show with BugSack, taint in `Logs/taint.log`.
 - The size slider: drag the knob and let go (also outside the slider): the size changes once, on letting go.
 - A three-item drop at 130 % (Settings → Size), so the window scrolls: the card that waits on you stays whole in
   sight (after your picks, the others' picks and the folds); with the mouse resting on the window nothing folds,
-  and right after your click nothing jumps under the mouse (the next card comes into sight a second later, or as
-  soon as the mouse leaves) (R45).
+  and nothing slides under the mouse: a card whose buttons show stays put until the mouse leaves, and one whose
+  buttons are out of sight comes into sight a second after your click (R45, R50).
 
 **Settings and the ways in**
 - Roll in Tutti off: the row says "Blizzard's popups return after a reload" and shows Reload, and until then the cards

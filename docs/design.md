@@ -172,7 +172,7 @@ Position: drag the header. It is saved and kept on screen.
 
 ### Bigger groups
 
-In a raid, a card lists only the members who picked Need or Greed, plus you. Everyone else folds into one line, "13 passed · 2 choosing", which opens to list them. A long card list scrolls inside the window once the window would pass about 70 % of the screen height *(the scrolling is not in the mockup)*. After every change to the rolls, the oldest card that waits on the player is brought whole into sight; the player's own scroll holds that off only while a waiting card's buttons still show, and for a second after the player's own pick nothing scrolls under the mouse *(R45)*.
+In a raid, a card lists only the members who picked Need or Greed, plus you. Everyone else folds into one line, "13 passed · 2 choosing", which opens to list them. A long card list scrolls inside the window once the window would pass about 70 % of the screen height *(the scrolling is not in the mockup)*. After every change to the rolls, the oldest card that waits on the player is brought whole into sight; the player's own scroll holds that off only while a waiting card's buttons still show. While the mouse is over the window nothing scrolls as long as that card's buttons show, and for a second after the player's own pick when they do not; what waited is done when the mouse leaves *(R45, R50)*.
 
 ### Other cases *(not in the mockup)*
 
