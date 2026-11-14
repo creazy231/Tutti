@@ -5,8 +5,9 @@
 
 Run from the addon folder. <render-dir> holds what tools/render_ui.lua pages
 need (see CLAUDE.md): media/, fonts/expressway.ttf, fonts/expressway-bold.ttf,
-class/, icons/, icon.png and the generated backdrops named in SHOTS (bg-*.jpg,
-never the mockup's private backdrop.jpg). Every scene is rendered fresh with
+class/, icons/ and icon.png; the generated backdrops named in SHOTS (bg-*.jpg,
+never the mockup's private backdrop.jpg) are copied into it from
+docs/listing/backdrops/. Every scene is rendered fresh with
 luajit, served over http (the fonts need it) and shot with headless Chrome
 into docs/listing/screenshots/ (or --out). Names pick shots: "hero", "03-winner".
 
@@ -17,6 +18,7 @@ window, who picked what, the winner, you won, the session's results, your UI.
 import functools
 import http.server
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -24,6 +26,7 @@ import urllib.parse
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 OUT = os.path.join("docs", "listing", "screenshots")
+BACKDROPS = os.path.join("docs", "listing", "backdrops")  # the generated backdrops (R48)
 EUI_ACCENT = "#00cfff"  # EllesmereUI's accent, as the "eui" variant of a scene draws it
 
 # name, scene (tools/render_ui.lua, "scene:eui" for EllesmereUI's accent), shot parameters
@@ -64,6 +67,15 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+def backdrops(root, names):
+    """Copies the backdrops the shots name from docs/listing/backdrops/ into the render dir, which serves them."""
+    for name in sorted(names):
+        source = os.path.join(BACKDROPS, name)
+        if not os.path.exists(source):
+            sys.exit("make_listing: no backdrop " + source)
+        shutil.copyfile(source, os.path.join(root, name))
+
+
 def page(scene):
     """The page's file name for a scene ("settings:eui" -> settings-eui.html) and the render_ui arguments."""
     name, _, variant = scene.partition(":")
@@ -84,6 +96,7 @@ def main():
     if not os.path.exists(os.path.join(root, "fonts", "expressway.ttf")):
         sys.exit("make_listing: no fonts/expressway.ttf in " + root + " (see CLAUDE.md)")
     os.makedirs(out_dir, exist_ok=True)
+    backdrops(root, {s[2]["bg"] for s in shots if "bg" in s[2]})
     for scene in sorted({s[1] for s in shots}):
         html, render_args = page(scene)
         subprocess.run(["luajit", "tools/render_ui.lua", os.path.join(root, html)] + render_args,

@@ -4,9 +4,10 @@
     python3 -I tools/make_gifs.py <render-dir> [--out <dir>] [name ...]
 
 Run from the addon folder, with the render dir tools/make_listing.py uses (see
-CLAUDE.md). For each GIF in GIFS, tools/render_ui.lua plays its film in the fake
-client, 15 frames a second, and writes one page per frame into the render dir
-(film-<film>-0001.html, ...). Each page is served over http and shot with
+CLAUDE.md; the backdrops named in GIFS are copied into it from
+docs/listing/backdrops/). For each GIF in GIFS, tools/render_ui.lua plays its
+film in the fake client, 15 frames a second, and writes one page per frame into
+the render dir (film-<film>-0001.html, ...). Each page is served over http and shot with
 headless Chrome at twice the GIF's size (several at once), scaled down with
 Pillow, and ffmpeg makes the GIF from the frames with one palette for all of them
 (palettegen, then paletteuse), looping forever, into docs/listing/animations/ (or
@@ -34,6 +35,7 @@ from PIL import Image
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 OUT = os.path.join("docs", "listing", "animations")
+BACKDROPS = os.path.join("docs", "listing", "backdrops")  # the generated backdrops (R48)
 SIZE = (800, 500)       # the GIF's size; the frames are shot at twice it
 WORKERS = 6             # Chrome processes at once
 LIMIT = 5 * 1024 * 1024  # CurseForge and GitHub show GIFs; keep each under 5 MB
@@ -56,6 +58,15 @@ GIFS = [
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
+
+
+def backdrops(root, names):
+    """Copies the backdrops the GIFs name from docs/listing/backdrops/ into the render dir, which serves them."""
+    for name in sorted(names):
+        source = os.path.join(BACKDROPS, name)
+        if not os.path.exists(source):
+            sys.exit("make_gifs: no backdrop " + source)
+        shutil.copyfile(source, os.path.join(root, name))
 
 
 def shoot(url, png, size):
@@ -120,6 +131,7 @@ def main():
     if not os.path.exists(os.path.join(root, "fonts", "expressway.ttf")):
         sys.exit("make_gifs: no fonts/expressway.ttf in " + root + " (see CLAUDE.md)")
     os.makedirs(out_dir, exist_ok=True)
+    backdrops(root, {g[2]["bg"] for g in GIFS if (not only or g[0] in only) and "bg" in g[2]})
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=root))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:

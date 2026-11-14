@@ -26,15 +26,17 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
   page draws no backdrop unless it asks for one: `?bg=backdrop.jpg` (`bd-dalaran.jpg`, renamed;
   private: only to compare with the mockup in the same state, its `#<state>` hash, with headless
   Chrome at 2x; never in a public image). Serve the dir over http; keep the renders out of the repo.
-- Listing (`docs/listing/`): the render dir above plus `icon.png` and the generated backdrops
-  `bg-vault.jpg`, `bg-hall.jpg` and `bg-camp.jpg` (kept out of git, with their prompts and
-  `prep_bg.py`, in `.superpowers/listing/`). `python3 -I tools/make_listing.py <dir>` renders
-  `screenshots/` (six shots and the hero); `python3 -I tools/make_gifs.py <dir>` makes the three
-  `animations/` (800 x 500, 15 fps, each under 5 MB; Chrome, Pillow and ffmpeg; the frames stay in
-  `<dir>/gif-<name>/`). Copy and layout are their `SHOTS` and `GIFS` lists (one idea per
-  headline, one `*accent*` word, `|` breaks a line), the films' timing `FILMS` in
-  `tools/render_ui.lua`, the listing's text `docs/listing/curseforge.md`. Look at every image,
-  and at frames of every GIF (`ffmpeg -i x.gif -vsync 0 f%03d.png`), before committing them.
+- Listing (`docs/listing/`): the render dir above plus `icon.png`. The generated backdrops
+  `bg-vault.jpg`, `bg-hall.jpg` and `bg-camp.jpg` (blurred) and their prompts (`prompts.md`) are
+  in `docs/listing/backdrops/` (R48), and both tools copy the ones they name into the render dir;
+  the sharp originals and `prep_bg.py` stay out of git (`.superpowers/listing/`).
+  `python3 -I tools/make_listing.py <dir>` renders `screenshots/` (six shots and the hero);
+  `python3 -I tools/make_gifs.py <dir>` makes the three `animations/` (800 x 500, 15 fps, each
+  under 5 MB; Chrome, Pillow and ffmpeg; the frames stay in `<dir>/gif-<name>/`). Copy and layout
+  are their `SHOTS` and `GIFS` lists (one idea per headline, one `*accent*` word, `|` breaks a
+  line), the films' timing `FILMS` in `tools/render_ui.lua`, the listing's text
+  `docs/listing/curseforge.md`. Look at every image, and at frames of every GIF
+  (`ffmpeg -i x.gif -vsync 0 f%03d.png`), before committing them.
 - Public images (the listing, GIFs): R30's made-up cast (the player Maelis Ashvale, Orlen
   Brightmoor, Brisé Tidewater, Corvel Duskmantle, Kestrel Ironmark) and generated backdrops;
   never the mockup's screenshot (`backdrop.jpg`) or its character names.
