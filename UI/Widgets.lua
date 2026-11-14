@@ -5,8 +5,11 @@
 --  the settings view (switch, segmented choice, dropdown + menu, slider), and
 --  at the end Tutti's own: the class icon, the item icon and the roll button.
 --  Everything down to "Class icons" is Sotto's UI/Widgets.lua, with Tutti's
---  media folder and menu name, and one change: wherever a colour name is
---  taken, a colour of one's own, { r, g, b [, a] }, is taken as well.
+--  media folder and menu name, and three changes: wherever a colour name is
+--  taken, a colour of one's own, { r, g, b [, a] }, is taken as well; a text
+--  takes a size its role lacks (the role's file at that size); and the
+--  segmented choice, the dropdown and the slider are cut to Tutti's approved
+--  mockup (.segc, .dd, .sl), the slider showing its value in the caller's format.
 -------------------------------------------------------------------------------
 local _, ns = ...
 local W = {}
@@ -132,15 +135,28 @@ end
 
 local textColor = setmetatable({}, { __mode = "k" })
 local textRole = setmetatable({}, { __mode = "k" })
+local textSize = setmetatable({}, { __mode = "k" })
 
-function W.Text(parent, role, colorName, layer)
+-- The role's font, at the text's own size when it has one: the role's file (its weight) at that size.
+local function applyFont(fs)
+    ns.Theme.ApplyFont(fs, textRole[fs])
+    local size = textSize[fs]
+    if size then
+        local path, _, flags = fs:GetFont()
+        if path then fs:SetFont(path, size, flags) end
+    end
+end
+
+-- size: px, for a size the theme's roles lack (bold 11, regular 12.5); nil for the role's own.
+function W.Text(parent, role, colorName, layer, size)
     local fs = parent:CreateFontString(nil, layer or "OVERLAY")
     textRole[fs] = role or "body"
+    textSize[fs] = size
     textColor[fs] = colorName or "text"
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(false)
     W.Paint(fs, function(f)
-        ns.Theme.ApplyFont(f, textRole[f])
+        applyFont(f)
         if textColor[f] then f:SetTextColor(color(textColor[f])) end
     end)
     return fs
@@ -156,9 +172,11 @@ function W.SetTextColor(fs, colorName)
     end
 end
 
-function W.SetRole(fs, role)
+-- A new role, and size (nil: the role's own); the font is set at once, so the text can be measured.
+function W.SetRole(fs, role, size)
     textRole[fs] = role
-    ns.Theme.ApplyFont(fs, role)
+    textSize[fs] = size
+    applyFont(fs)
 end
 
 local iconColor = setmetatable({}, { __mode = "k" })
@@ -308,8 +326,10 @@ function W.Switch(parent, get, set)
 end
 
 -------------------------------------------------------------------------------
---  Segmented choice
+--  Segmented choice (.segc: 11 px, 3 px above and below its 15.4 px line, 6 px either side)
 -------------------------------------------------------------------------------
+local SEG_H, SEG_PAD = 21, 6
+
 function W.Segmented(parent, choices, get, set)
     local f = CreateFrame("Frame", nil, parent)
     f.buttons = {}
@@ -323,11 +343,11 @@ function W.Segmented(parent, choices, get, set)
         b.line:SetPoint("BOTTOMLEFT")
         b.line:SetPoint("BOTTOMRIGHT")
         b.line:SetHeight(2)
-        b.text = W.Text(b, "small", "dim")
+        b.text = W.Text(b, "sub", "dim")
         b.text:SetText(c.text)
         b.text:SetPoint("CENTER", 0, 0)
-        local w = ceil(b.text:GetStringWidth()) + 14
-        b:SetSize(w, 20)
+        local w = ceil(b.text:GetStringWidth()) + 2 * SEG_PAD
+        b:SetSize(w, SEG_H)
         b:SetPoint("LEFT", f, "LEFT", x, 0)
         if i > 1 then W.Hair(b, "LEFT") end
         b:SetScript("OnClick", function(self)
@@ -340,7 +360,7 @@ function W.Segmented(parent, choices, get, set)
         x = x + w
         f.buttons[i] = b
     end
-    f:SetSize(x, 20)
+    f:SetSize(x, SEG_H)
     W.Border(f)
     function f:Refresh()
         local v = get()
@@ -444,23 +464,25 @@ end
 function W.CurrentMenu() return menu end
 
 -------------------------------------------------------------------------------
---  Dropdown
+--  Dropdown (.dd: 11.5 px, 3 px above and below its 16.1 px line, 7 px either side, a 9 px chevron 12 px on)
 -------------------------------------------------------------------------------
+local DD_H, DD_PAD, DD_GAP, DD_CHEVRON = 22, 7, 12, 9
+
 function W.Dropdown(parent, choices, get, set)
     local b = CreateFrame("Button", nil, parent)
     b.bg = W.Fill(b, "inset")
     b.bg:SetAllPoints()
     W.Border(b, "euiBorder")
-    b.label = W.Text(b, "small", "text")
-    b.label:SetPoint("LEFT", 7, 0)
-    b.chev = W.Icon(b, "chevron", 10, "muted")
-    b.chev:SetPoint("RIGHT", -6, 0)
+    b.label = W.Text(b, "pick", "text")
+    b.label:SetPoint("LEFT", DD_PAD, 0)
+    b.chev = W.Icon(b, "chevron", DD_CHEVRON, "muted")
+    b.chev:SetPoint("RIGHT", -DD_PAD, 0)
     local widest = 0
     for _, c in ipairs(choices) do
         b.label:SetText(c.text)
         widest = max(widest, b.label:GetStringWidth())
     end
-    b:SetSize(ceil(widest) + 34, 20)
+    b:SetSize(DD_PAD + ceil(widest) + DD_GAP + DD_CHEVRON + DD_PAD, DD_H)
     function b:Refresh()
         local v = get()
         for _, c in ipairs(choices) do
@@ -486,28 +508,43 @@ function W.Dropdown(parent, choices, get, set)
 end
 
 -------------------------------------------------------------------------------
---  Slider
+--  Slider (.sl: a 64 px track, the value 8 px after it in 11.5 px, 16.1 px high; .track::after, a 10 px knob in a
+--  1 px dark ring). `format(v)` writes the value ("100%"), tostring by default; the value has the room of the
+--  wider of the two ends, right-aligned, so the track stays put.
 -------------------------------------------------------------------------------
-function W.Slider(parent, lo, hi, step, get, set)
+local SL_H, SL_TRACK, SL_GAP, SL_KNOB, SL_RING = 16, 64, 8, 10, 12
+
+function W.Slider(parent, lo, hi, step, get, set, format)
+    format = format or tostring
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(104, 14)
     f:EnableMouse(true)
     f:EnableMouseWheel(true)
-    f.value = W.Text(f, "small", "dim")
+    f.value = W.Text(f, "pick", "dim")
     f.value:SetPoint("RIGHT", 0, 0)
     f.value:SetJustifyH("RIGHT")
-    f.value:SetWidth(20)
+    local room = 0
+    for _, v in ipairs({ lo, hi }) do
+        f.value:SetText(format(v))
+        room = max(room, ceil(f.value:GetStringWidth()))
+    end
+    f.value:SetWidth(room)
+    f:SetSize(SL_KNOB / 2 + SL_TRACK + SL_GAP + room, SL_H)
     f.track = W.Fill(f, "track", "ARTWORK")
-    f.track:SetPoint("LEFT", 5, 0)
-    f.track:SetPoint("RIGHT", -30, 0)
+    f.track:SetPoint("LEFT", SL_KNOB / 2, 0)
+    f.track:SetWidth(SL_TRACK)
     f.track:SetHeight(2)
     f.fill = W.Fill(f, "accent", "ARTWORK", 1)
     f.fill:SetPoint("LEFT", f.track, "LEFT")
     f.fill:SetHeight(2)
-    f.knob = f:CreateTexture(nil, "OVERLAY")
+    f.knob = f:CreateTexture(nil, "OVERLAY", nil, 1)
     f.knob:SetTexture(CIRCLE)
-    f.knob:SetSize(10, 10)
+    f.knob:SetSize(SL_KNOB, SL_KNOB)
     W.Paint(f.knob, function(t) t:SetVertexColor(color("white")) end)
+    f.ring = f:CreateTexture(nil, "OVERLAY")
+    f.ring:SetTexture(CIRCLE)
+    f.ring:SetSize(SL_RING, SL_RING)
+    f.ring:SetPoint("CENTER", f.knob, "CENTER")
+    f.ring:SetVertexColor(0, 0, 0, 0.6)
 
     local function clamp(v)
         v = floor((v - lo) / step + 0.5) * step + lo
@@ -521,7 +558,7 @@ function W.Slider(parent, lo, hi, step, get, set)
         self.fill:SetWidth(max(0.001, w * frac))
         self.knob:ClearAllPoints()
         self.knob:SetPoint("CENTER", self.track, "LEFT", w * frac, 0)
-        self.value:SetText(tostring(v))
+        self.value:SetText(format(v))
     end
 
     function f:SetTo(v)

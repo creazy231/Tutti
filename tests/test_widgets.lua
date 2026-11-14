@@ -88,6 +88,69 @@ T.it("dropdown opens a menu and sets the value", function()
     T.eq(dd.label:GetText(), "None")
 end)
 
+T.it("a text takes a size its role lacks, kept through a repaint", function()
+    local G, W, ns, Wd, parent = load({ eui = true })
+    local bold = "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway Bold.ttf"
+    local regular = "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.TTF"
+    local fs = Wd.Text(parent, "item", "muted", nil, 11)
+    local path, size = fs:GetFont()
+    T.eq(path, bold, "the role's file: its weight")
+    T.eq(size, 11, "at the size asked for")
+    ns.Fire("LOOKS_CHANGED")
+    T.eq(select(2, fs:GetFont()), 11, "kept through a repaint")
+    Wd.SetRole(fs, "sub", 12.5)
+    path, size = fs:GetFont()
+    T.eq(path, regular)
+    T.eq(size, 12.5)
+    Wd.SetRole(fs, "sub")
+    T.eq(select(2, fs:GetFont()), 11, "a role without a size: the role's own")
+    ns.Fire("LOOKS_CHANGED")
+    T.eq(select(2, fs:GetFont()), 11)
+end)
+
+-- The approved mockup's .segc, .dd and .sl (docs/mockup): Tutti's settings view is cut to them.
+T.it("the settings controls follow the mockup: .segc 11 px, .dd 11.5 px, .sl a 64 px track and its value", function()
+    local G, W, ns, Wd, parent = load()
+    local accent = "class"
+    local seg = Wd.Segmented(parent,
+        { { value = "class", text = "Class colour" }, { value = "eui", text = "EllesmereUI" } },
+        function() return accent end, function(x) accent = x end)
+    local first, second = seg.buttons[1], seg.buttons[2]
+    T.eq(select(2, first.text:GetFont()), 11, "11 px")
+    T.eq(first:GetHeight(), 21, "3 px above and below the 15.4 px line")
+    T.eq(first:GetWidth(), math.ceil(first.text:GetStringWidth()) + 12, "6 px either side")
+    T.eq(seg:GetHeight(), 21)
+    T.eq(seg:GetWidth(), first:GetWidth() + second:GetWidth())
+
+    local after = 10
+    local dd = Wd.Dropdown(parent, { { value = 10, text = "10 seconds" }, { value = 0, text = "Never" } },
+        function() return after end, function(x) after = x end)
+    T.eq(select(2, dd.label:GetFont()), 11.5, "11.5 px")
+    T.eq(dd:GetHeight(), 22, "3 px above and below the 16.1 px line")
+    local probe = Wd.Text(parent, "pick")
+    probe:SetText("10 seconds")
+    T.eq(dd:GetWidth(), math.ceil(probe:GetStringWidth()) + 35, "7 + the widest choice + 12 + a 9 px chevron + 7")
+    T.eq(dd.chev:GetWidth(), 9)
+    T.near(dd.chev:GetRight(), dd:GetRight() - 7, 1e-6, "the chevron 7 px in")
+    T.near(dd.label:GetLeft(), dd:GetLeft() + 7, 1e-6, "the label 7 px in")
+
+    local size = 100
+    local sl = Wd.Slider(parent, 80, 130, 5, function() return size end, function(x) size = x end,
+        function(v) return v .. "%" end)
+    T.eq(sl.value:GetText(), "100%", "the caller's format")
+    T.eq(select(2, sl.value:GetFont()), 11.5, "11.5 px")
+    T.eq(sl:GetHeight(), 16)
+    T.eq(sl.track:GetWidth(), 64, "a 64 px track")
+    probe:SetText("130%")
+    T.eq(sl.value:GetWidth(), math.ceil(probe:GetStringWidth()), "the value as wide as the widest end")
+    T.near(sl.value:GetRight(), sl:GetRight(), 1e-6, "the value on the right")
+    T.near(sl.track:GetRight() + 8, sl.value:GetLeft(), 1e-6, "8 px before it")
+    T.near(sl.track:GetLeft(), sl:GetLeft() + 5, 1e-6, "half a knob in from the left")
+    T.eq(sl.ring:GetWidth(), 12, "the knob's dark ring, 1 px around it")
+    sl:SetTo(85)
+    T.eq(sl.value:GetText(), "85%")
+end)
+
 T.it("a right-aligned menu opens to the left of its anchor", function()
     local G, W, ns, Wd, parent = load()
     local anchor = G.CreateFrame("Button", nil, parent)
