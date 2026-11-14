@@ -238,7 +238,8 @@ local function paintRow(row)
     paint(row.you, "faint")
 
     -- The class icon in its black rim, the first name in the class colour.
-    row.rim:SetShown(W.ClassIcon(row.class, data.class))
+    local hasIcon = W.ClassIcon(row.class, data.class)
+    for _, line in ipairs(row.rim) do line:SetShown(hasIcon) end
     font(row.name, "row")
     row.name:SetText(data.name or "")
     paint(row.name, classColor(data.class))
@@ -285,6 +286,34 @@ function Row:Set(data, opts)
     paintRow(self)
 end
 
+-- The class icon's black rim (the mockup's box-shadow 0 0 0 1px #000): four lines one physical pixel wide just
+-- outside the icon, at any UI scale, the top and bottom ones over the corners. Nothing lies under the icon: the client
+-- fades a row region by region (CSS fades the row as one layer), so a black square under it would show through a
+-- faded row's icon (a pass, a loser) and darken it.
+local function newRim(row, icon)
+    local lines = {}
+    for i, edge in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local line = row:CreateTexture(nil, "BORDER", nil, 1)
+        lines[i] = W.Paint(line, function(tex)
+            local px = W.Pixel(row)
+            tex:SetColorTexture(0, 0, 0, 1)
+            tex:ClearAllPoints()
+            if edge == "TOP" or edge == "BOTTOM" then
+                local side = edge == "TOP" and "BOTTOM" or "TOP"
+                tex:SetPoint(side .. "LEFT", icon, edge .. "LEFT", -px, 0)
+                tex:SetPoint(side .. "RIGHT", icon, edge .. "RIGHT", px, 0)
+                tex:SetHeight(px)
+            else
+                local side = edge == "LEFT" and "RIGHT" or "LEFT"
+                tex:SetPoint("TOP" .. side, icon, "TOP" .. edge, 0, 0)
+                tex:SetPoint("BOTTOM" .. side, icon, "BOTTOM" .. edge, 0, 0)
+                tex:SetWidth(px)
+            end
+        end)
+    end
+    return lines
+end
+
 function Card.NewRow(parent)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_H)
@@ -302,14 +331,7 @@ function Card.NewRow(parent)
     row.class = row:CreateTexture(nil, "ARTWORK")
     row.class:SetSize(CLASS_ICON, CLASS_ICON)
     row.class:SetPoint("LEFT", ROW_PAD, 0)
-    row.rim = row:CreateTexture(nil, "BORDER", nil, 1)
-    W.Paint(row.rim, function(rim) -- one physical pixel of black around the class icon, at any UI scale
-        local px = W.Pixel(row)
-        rim:SetColorTexture(0, 0, 0, 1)
-        rim:ClearAllPoints()
-        rim:SetPoint("TOPLEFT", row.class, "TOPLEFT", -px, px)
-        rim:SetPoint("BOTTOMRIGHT", row.class, "BOTTOMRIGHT", px, -px)
-    end)
+    row.rim = newRim(row, row.class)
     row.name = newText(row, "row")
     row.name:SetPoint("LEFT", NAME_X, 0)
     row.you = newText(row, "you")

@@ -532,6 +532,62 @@ T.it("a loser's number is muted and regular", function()
     T.eq(mine:GetFont(), ns.Theme.Font("roll"), "the winner's number stays bold")
 end)
 
+T.it("a faded row's class icon keeps its colour: nothing under it, its black rim four lines just outside", function()
+    local G, W, ns, window = setup({ eui = true })
+    G.UIParent:SetScale(0.5) -- a physical pixel is then 1.42 units: the rim follows the screen's pixel
+    local view = roll(W, ns, window)
+    view.buttons.greed:Click()
+    W.fire("CANCEL_LOOT_ROLL", 7)
+    W.setDrop(9, 7, decided(G, W, {
+        pick(G, ORLEN, "NeedMainSpec", 19, true), pick(G, BRISE, "Greed"), pick(G, CORVEL, "Pass"),
+        pick(G, KESTREL, "Pass"), pick(G, AYLA, "Greed"),
+    }, ORLEN, 19))
+    local loser = rowsOf(view)[2]
+    T.eq(loser:GetAlpha(), 0.42, "a loser fades back")
+    -- The client fades a row region by region, where the mockup's CSS fades .pr as one layer: whatever lies under the
+    -- class icon shows through a faded icon and darkens it. Nothing of the row lies under it.
+    local icon = loser.class
+    T.ok(icon:IsShown(), "the class icon")
+    local l, b, w, h = icon:GetRect()
+    for _, region in ipairs({ loser:GetRegions() }) do
+        if region ~= icon and region:GetObjectType() == "Texture" and region:IsShown() then
+            local rl, rb, rw, rh = region:GetRect()
+            T.no(rl < l + w - 1e-6 and rl + rw > l + 1e-6 and rb < b + h - 1e-6 and rb + rh > b + 1e-6,
+                "a texture of the row under the class icon")
+        end
+    end
+    -- The rim (the mockup's box-shadow 0 0 0 1px #000): black lines one physical pixel wide just outside the icon,
+    -- top and bottom over the corners, the sides between them.
+    local px = ns.W.Pixel(loser)
+    T.near(px, 768 / 1080 / 0.5, 1e-9)
+    T.eq(#loser.rim, 4, "four lines")
+    for i, line in ipairs(loser.rim) do
+        T.ok(line:IsShown(), "line " .. i .. " shows with the icon")
+        same(line._color, 0, 0, 0, "line " .. i)
+        T.eq(line._color[4], 1, "line " .. i .. " opaque")
+    end
+    local top, bottom, left, right = loser.rim[1], loser.rim[2], loser.rim[3], loser.rim[4]
+    for _, edge in ipairs({ { top, b + h }, { bottom, b - px } }) do
+        local line, at = edge[1], edge[2]
+        T.near(line:GetBottom(), at, 1e-9, "top and bottom lines just outside")
+        T.near(line:GetHeight(), px, 1e-9)
+        T.near(line:GetLeft(), l - px, 1e-9, "over the corners")
+        T.near(line:GetWidth(), w + 2 * px, 1e-9)
+    end
+    for _, edge in ipairs({ { left, l - px }, { right, l + w } }) do
+        local line, at = edge[1], edge[2]
+        T.near(line:GetLeft(), at, 1e-9, "the sides just outside")
+        T.near(line:GetWidth(), px, 1e-9)
+        T.near(line:GetBottom(), b, 1e-9, "between the top and bottom lines")
+        T.near(line:GetHeight(), h, 1e-9)
+    end
+
+    -- A class the row cannot show takes its rim with it.
+    loser:Set({ guid = "Player-1-0009", name = "Nobody", class = "NOT_A_CLASS", state = "pass" }, { decided = true })
+    T.no(loser.class:IsShown(), "no icon")
+    for i, line in ipairs(loser.rim) do T.no(line:IsShown(), "no rim line " .. i) end
+end)
+
 T.it("the player wins: 'You won · Need 87', glow and shine started", function()
     local G, W, ns, window = setup()
     local view = roll(W, ns, window)
