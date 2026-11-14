@@ -5,7 +5,7 @@ local T = T
 -------------------------------------------------------------------------------
 -- Item n is AXE + n - 1; its roll has the roll ID n and its drop the key 9:n.
 local AXE = 18000
-local ITEMS = { "Guardian's Dualblade", "Other axe", "Third axe", "Fourth axe", "Fifth axe", "Sixth axe" }
+local ITEMS = { "Guardian's Dualblade", "Other axe", "Third axe", "Fourth axe", "Fifth axe" }
 local CHIME = "Interface\\AddOns\\Tutti\\Media\\Sounds\\chime.ogg"
 
 -- The party in party1..party4; the player is the fake's Ayla Brightwind.
@@ -575,10 +575,9 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win.scroll:GetHeight(), 0.7 * 1080 - 32, "and the cards scroll under the header")
     T.eq(win.content:GetHeight(), total)
     T.ok(win.thumb:IsShown(), "a thumb shows there is more")
-    for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
-    T.eq(win.scroll:GetVerticalScroll(), 0, "the wheel goes up to the first card")
+    T.eq(win.scroll:GetVerticalScroll(), 0)
     win.scroll:_fire("OnMouseWheel", -1)
-    T.eq(win.scroll:GetVerticalScroll(), 40, "and down 40 px a notch")
+    T.eq(win.scroll:GetVerticalScroll(), 40, "the wheel scrolls")
     T.eq(at(W, win, win.views[cards[1]]), 32 - 40, "the cards move up")
     for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", -1) end
     T.eq(win.scroll:GetVerticalScroll(), total - (0.7 * 1080 - 32), "as far as the last card")
@@ -602,26 +601,35 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win.scroll:GetVerticalScroll(), 0)
 end)
 
-T.it("cards that wait on the player bring the first of them to the top, unless the player scrolled by hand", function()
+-- A card whose Need is refused: the reason under its buttons makes it 218 px, more than a scale of 1.3 leaves
+-- room for under two cards the player has rolled on (2 × 171 + 218 > 549.5).
+local REFUSED = { canNeed = false, reasonNeed = 1 }
+
+-- Whether a card shows whole between the header and the window's bottom.
+local function whole(W, win, card)
+    local y = at(W, win, win.views[card])
+    return y >= 32 - 1e-6 and y + win.views[card]:Height() <= 32 + win.scroll:GetHeight() + 1e-6
+end
+
+T.it("cards that wait on the player bring the first of them into sight, unless the player scrolled by hand", function()
     local G, W, ns, win = setup()
     ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
     local cards = {}
-    for n = 1, 3 do cards[n] = roll(W, ns, n) end -- three rolls at once
+    for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end -- three rolls at once
     W.advance(0.35)
     local visible = win.scroll:GetHeight()
-    local function inView(card)
-        local y = at(W, win, win.views[card])
-        return y >= 32 and y < 32 + visible
-    end
     T.ok(heights(win, cards) > visible, "the window scrolls")
-    T.ok(inView(cards[1]), "the first card's top is in sight")
-    T.eq(at(W, win, win.views[cards[1]]), 32, "at the top of what shows: the player works down from there")
-    -- The player has rolled on the first: the next roll brings up the oldest card still waiting.
+    T.eq(at(W, win, win.views[cards[1]]), 32, "the first card at the top of what shows: the player works down")
+    -- The player has rolled on the first two; the third is cut off at the bottom until the next roll comes.
     win.views[cards[1]].buttons.pass:Click()
+    win.views[cards[2]].buttons.pass:Click()
+    T.no(whole(W, win, cards[3]), "cut off at the bottom")
     cards[4] = roll(W, ns, 4)
-    T.eq(at(W, win, win.views[cards[2]]), 32, "the first card still waiting, at the top")
+    T.ok(whole(W, win, cards[3]), "the first card still waiting comes into sight, whole")
+    T.eq(win.scroll:GetVerticalScroll(), win.content:GetHeight() - visible, "its top to the top, as far as it goes")
     -- The player scrolls by hand: nothing scrolls by itself any more.
     for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
+    T.no(whole(W, win, cards[3]))
     cards[5] = roll(W, ns, 5)
     T.eq(win.scroll:GetVerticalScroll(), 0, "the player's own scroll stays")
     -- Until the window has closed and opened again.
@@ -632,10 +640,11 @@ T.it("cards that wait on the player bring the first of them to the top, unless t
     W.advance(10.1)
     W.advance(0.55)
     T.no(win:IsShown())
-    for n = 1, 3 do cards[n] = roll(W, ns, n) end
+    for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end
     win.views[cards[1]].buttons.pass:Click()
+    win.views[cards[2]].buttons.pass:Click()
     cards[4] = roll(W, ns, 4)
-    T.eq(at(W, win, win.views[cards[2]]), 32, "a new opening, a new start")
+    T.ok(whole(W, win, cards[3]), "a new opening, a new start")
 end)
 
 -------------------------------------------------------------------------------
@@ -840,4 +849,90 @@ T.it("a view whose builder fails is built once and reported once", function()
     T.ok(errors[1]:find("recent", 1, true), "naming the view")
     T.ok(errors[2]:find("no settings today", 1, true))
     T.no(win:IsShown())
+end)
+
+-------------------------------------------------------------------------------
+--  Review round 2 (R42)
+-------------------------------------------------------------------------------
+T.it("a fold above the first waiting card leaves that card whole in sight", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3)
+    local a, b = roll(W, ns, 1), roll(W, ns, 2)
+    W.advance(0.35)
+    win.views[a].buttons.pass:Click()
+    win.views[b].buttons.pass:Click()
+    decide(G, W, 1, ORLEN, 19) -- the first card folds 4 s from now
+    -- Three drops the history shows first: cards without buttons, nothing to bring into sight yet.
+    for n = 3, 5 do W.setDrop(9, n, drop(G, W, n, { rollInfo(G, ORLEN, "NeedMainSpec") })) end
+    T.eq(win.scroll:GetVerticalScroll(), 0)
+    -- The player's roll for the third joins its card, which now waits on them and is cut off at the bottom.
+    roll(W, ns, 3, REFUSED)
+    local c = ns.Rolls.Cards()[3]
+    T.ok(ns.Rolls.AwaitsMe(c), "the third card waits on the player")
+    T.eq(at(W, win, win.views[c]), 32, "it comes to the top of what shows")
+    W.advance(4)
+    T.eq(win.views[a]:Height(), 26, "the decided card above it folds")
+    T.eq(at(W, win, win.views[c]), 32, "the waiting card stays where it was, whole")
+    T.ok(whole(W, win, c))
+end)
+
+T.it("a waiting card already whole in sight is not scrolled to", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3)
+    local a, b = roll(W, ns, 1), roll(W, ns, 2)
+    W.advance(0.35)
+    win.views[a].buttons.pass:Click() -- the second card, still waiting, shows whole under the first
+    T.ok(whole(W, win, b))
+    roll(W, ns, 3) -- more than the window holds now
+    T.ok(win.content:GetHeight() > win.scroll:GetHeight(), "the rolls can scroll")
+    T.eq(win.scroll:GetVerticalScroll(), 0, "nothing moves under the mouse")
+    T.eq(at(W, win, win.views[b]), 32 + win.views[a]:Height())
+end)
+
+T.it("only a wheel that moves the rolls stops them coming into sight by themselves", function()
+    local G, W, ns, win = setup()
+    ns.UI.RegisterView("recent", function(parent) -- a long list of results, which scrolls
+        local f = G.CreateFrame("Frame", nil, parent)
+        function f:Refresh() end
+        function f:Height() return 2000 end
+        return f
+    end)
+    ns.Set("scale", 1.3)
+    local cards = {}
+    for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end
+    W.advance(0.35)
+    win.scroll:_fire("OnMouseWheel", 1) -- at the top already: it moves nothing
+    T.eq(win.scroll:GetVerticalScroll(), 0)
+    ns.UI.Open("recent")
+    win.scroll:_fire("OnMouseWheel", -1)
+    T.eq(win.scroll:GetVerticalScroll(), 40, "Recent rolls scrolls")
+    ns.UI.Open("rolls")
+    win.views[cards[1]].buttons.pass:Click()
+    win.views[cards[2]].buttons.pass:Click()
+    T.no(whole(W, win, cards[3]))
+    cards[4] = roll(W, ns, 4)
+    T.ok(win.scroll:GetVerticalScroll() > 0, "the rolls still scroll by themselves")
+    T.ok(whole(W, win, cards[3]), "to the first card still waiting")
+end)
+
+T.it("a size the client reads back rounded is not a new size", function()
+    local G, W, ns, win = setup({ db = { settings = { scale = 1.1 } } })
+    -- The client keeps a frame's scale as a 32-bit float: 1.1 reads back as 1.100000023841858.
+    local ffi = require("ffi")
+    local float = ffi.new("float[1]")
+    win.GetScale = function(self)
+        float[0] = self._scale
+        return tonumber(float[0])
+    end
+    T.ok(win:GetScale() ~= 1.1, "the read-back differs from the setting")
+    local repaints = 0
+    ns.Listen("LOOKS_CHANGED", function() repaints = repaints + 1 end)
+    roll(W, ns, 1)
+    W.advance(0.35)
+    T.eq(repaints, 0, "opening at the saved size repaints nothing")
+    win.head:_fire("OnDragStart")
+    win.head:_fire("OnDragStop")
+    T.eq(repaints, 0, "nor does a drag")
+    ns.Set("scale", 1.2)
+    T.eq(repaints, 1, "a new size repaints, once")
 end)

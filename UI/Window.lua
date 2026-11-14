@@ -74,7 +74,8 @@ local countdown            -- { total, left, endsAt, paused } while the window c
 local closing              -- the Sink while the window fades out
 local closingByItself      -- that fade is the countdown's (not a close the player asked for)
 local contentHeight, visibleHeight = 0, 0
-local byHand = false       -- the player has scrolled since the window last opened
+local byHand = false       -- the player has scrolled the rolls since the window last opened
+local applied = 1          -- the size last given to the window (a new frame's scale is 1)
 
 -------------------------------------------------------------------------------
 --  Small helpers
@@ -283,13 +284,16 @@ end
 -- The size setting, and the saved top-left corner. The corner is kept in UIParent's units and the anchor's
 -- offsets are in the window's own (they grow with its scale), so they are divided by the scale: the corner
 -- stays where it was saved, whatever the size. A hairline is one physical pixel at the scale it was painted
--- for (W.Pixel), so a new size paints everything again, the cards included, as new looks do.
+-- for (W.Pixel), so a new size paints everything again, the cards included, as new looks do. Whether the size is
+-- new is asked of the size last given, not of GetScale: the client keeps a scale as a 32-bit float, so 1.1 reads
+-- back as 1.100000023841858 and would look new at every opening and every drag.
 local function place()
     local saved = ns.DB and ns.DB.window or {}
     local home = ns.DEFAULTS.window
     local x, y = ns.Clear(saved.x, "number") or home.x, ns.Clear(saved.y, "number") or home.y
     local scale = sizeSetting()
-    local resized = ns.Clear(win:GetScale(), "number") ~= scale
+    local resized = scale ~= applied
+    applied = scale
     win:SetScale(scale)
     win:ClearAllPoints()
     win:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x / scale, y / scale)
@@ -399,17 +403,30 @@ local function relayout()
     scrollTo(scrolled())
 end
 
--- The cards the player has to roll on are never pushed out of sight: when one comes, the rolls scroll so the
--- first of them, the oldest still waiting, is at the top of what shows (a boss drop lands at once, and the
--- player works down from the top), unless the player has scrolled by hand since the window last opened.
+-- The cards the player has to roll on are never pushed out of sight: when one comes, the first of them, the
+-- oldest still waiting, is brought into sight with its top at the top of what shows (a boss drop lands at once,
+-- and the player works down from the top), as far as the scroll goes. A card already whole in sight is left
+-- where it is: the buttons under the mouse do not jump when a roll comes. Nothing scrolls by itself once the
+-- player has scrolled the rolls by hand since the window last opened.
 local function revealWaiting()
     if byHand or current ~= "rolls" then return end
     for _, card in ipairs(order) do
-        if not folded[card] and tops[card] and Rolls.AwaitsMe(card) then
-            scrollTo(tops[card])
+        local top = tops[card]
+        if not folded[card] and top and Rolls.AwaitsMe(card) then
+            local offset = scrolled()
+            local whole = top >= offset - EPSILON
+                and top + views[card]:Height() <= offset + visibleHeight + EPSILON
+            if not whole then scrollTo(top) end
             return
         end
     end
+end
+
+-- Tutti's own changes to the rolls (a fold, a card that goes, a decision, the group) can move the first card
+-- that waits on the player out of sight while the scroll stays: it is brought back after them.
+local function settle()
+    relayout()
+    revealWaiting()
 end
 
 -------------------------------------------------------------------------------
@@ -678,11 +695,14 @@ head:SetScript("OnDragStop", function()
     savePosition()
 end)
 
+-- Only a wheel that moved the rolls counts as the player's own scroll: a notch at either end, or one in Recent
+-- rolls or Settings, leaves the rolls coming into sight by themselves.
 scroll:SetScript("OnMouseWheel", function(_, delta)
     delta = ns.Clear(delta, "number")
     if not delta then return end
-    byHand = true
-    scrollTo(scrolled() - delta * WHEEL)
+    local before = scrolled()
+    scrollTo(before - delta * WHEEL)
+    if current == "rolls" and scrolled() ~= before then byHand = true end
 end)
 
 -- Every frame while the window shows: the cards' seconds and bars, the folds, the countdown, and Polestar's
@@ -696,7 +716,7 @@ local function tickCards()
 end
 
 local function foldStep()
-    if refold() then relayout() end
+    if refold() then settle() end
 end
 
 local function countdownStep()
@@ -773,7 +793,7 @@ ns.Listen("CARD_DECIDED", function(card)
         if ns.Get("sound") == "chime" then PlaySoundFile(CHIME, "Master") end
     end
     if fading() and closingByItself then stayOpen() end
-    relayout()
+    settle()
     updateCountdown(true)
     drawHeader()
 end)
@@ -786,7 +806,7 @@ ns.Listen("CARD_REMOVED", function(card)
     for i, c in ipairs(order) do
         if c == card then table.remove(order, i); break end
     end
-    relayout()
+    settle()
     updateCountdown()
     drawHeader()
 end)
@@ -794,7 +814,7 @@ end)
 -- The rows come from the group.
 ns.Listen("GROUP_CHANGED", function()
     for _, card in ipairs(order) do views[card]:Update({}) end
-    relayout()
+    settle()
 end)
 
 ns.Listen("SETTING_CHANGED", function(key)
