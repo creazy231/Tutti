@@ -5,7 +5,7 @@ local T = T
 -------------------------------------------------------------------------------
 -- Item n is AXE + n - 1; its roll has the roll ID n and its drop the key 9:n.
 local AXE = 18000
-local ITEMS = { "Guardian's Dualblade", "Other axe", "Third axe", "Fourth axe", "Fifth axe" }
+local ITEMS = { "Guardian's Dualblade", "Other axe", "Third axe", "Fourth axe", "Fifth axe", "Sixth axe" }
 local CHIME = "Interface\\AddOns\\Tutti\\Media\\Sounds\\chime.ogg"
 
 -- The party in party1..party4; the player is the fake's Ayla Brightwind.
@@ -108,6 +108,13 @@ local function stubViews(G, ns)
 end
 
 local function iconColor(button) return { button.icon:GetVertexColor() } end
+
+-- A client whose error handler records the errors (the fake's own raises them). -> opts for setup
+local function recording(errors)
+    return { setup = function(G)
+        G.geterrorhandler = function() return function(err) errors[#errors + 1] = tostring(err) end end
+    end }
+end
 
 -- Is the colour c ({ r, g, b, ... }) the expected one ({ r, g, b, ... })?
 local function same(c, expected, msg)
@@ -558,9 +565,10 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win.scroll:GetHeight(), 0.7 * 1080 - 32, "and the cards scroll under the header")
     T.eq(win.content:GetHeight(), total)
     T.ok(win.thumb:IsShown(), "a thumb shows there is more")
-    T.eq(win.scroll:GetVerticalScroll(), 0)
+    for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
+    T.eq(win.scroll:GetVerticalScroll(), 0, "the wheel goes up to the first card")
     win.scroll:_fire("OnMouseWheel", -1)
-    T.eq(win.scroll:GetVerticalScroll(), 40, "the wheel scrolls")
+    T.eq(win.scroll:GetVerticalScroll(), 40, "and down 40 px a notch")
     T.eq(at(W, win, win.views[cards[1]]), 32 - 40, "the cards move up")
     for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", -1) end
     T.eq(win.scroll:GetVerticalScroll(), total - (0.7 * 1080 - 32), "as far as the last card")
@@ -582,6 +590,42 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win:GetHeight(), 32 + heights(win, { card }))
     T.no(win.thumb:IsShown())
     T.eq(win.scroll:GetVerticalScroll(), 0)
+end)
+
+T.it("cards that wait on the player bring the first of them to the top, unless the player scrolled by hand", function()
+    local G, W, ns, win = setup()
+    ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
+    local cards = {}
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end -- three rolls at once
+    W.advance(0.35)
+    local visible = win.scroll:GetHeight()
+    local function inView(card)
+        local y = at(W, win, win.views[card])
+        return y >= 32 and y < 32 + visible
+    end
+    T.ok(heights(win, cards) > visible, "the window scrolls")
+    T.ok(inView(cards[1]), "the first card's top is in sight")
+    T.eq(at(W, win, win.views[cards[1]]), 32, "at the top of what shows: the player works down from there")
+    -- The player has rolled on the first: the next roll brings up the oldest card still waiting.
+    win.views[cards[1]].buttons.pass:Click()
+    cards[4] = roll(W, ns, 4)
+    T.eq(at(W, win, win.views[cards[2]]), 32, "the first card still waiting, at the top")
+    -- The player scrolls by hand: nothing scrolls by itself any more.
+    for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
+    cards[5] = roll(W, ns, 5)
+    T.eq(win.scroll:GetVerticalScroll(), 0, "the player's own scroll stays")
+    -- Until the window has closed and opened again.
+    for n = 1, 5 do
+        if ns.Rolls.AwaitsMe(cards[n]) then win.views[cards[n]].buttons.pass:Click() end
+        decide(G, W, n, ORLEN, 10 + n)
+    end
+    W.advance(10.1)
+    W.advance(0.55)
+    T.no(win:IsShown())
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end
+    win.views[cards[1]].buttons.pass:Click()
+    cards[4] = roll(W, ns, 4)
+    T.eq(at(W, win, win.views[cards[2]]), 32, "a new opening, a new start")
 end)
 
 -------------------------------------------------------------------------------
@@ -631,6 +675,9 @@ end)
 
 T.it("a folded card decided late comes back whole and folds again 4 s later (R21)", function()
     local G, W, ns, win = setup()
+    local washes, pops = {}, {}
+    ns.Fx.Wash = function(tex) washes[#washes + 1] = tex end
+    ns.Fx.Pop = function(frame) pops[#pops + 1] = frame end
     local began = G.C_LootHistory.GetLootHistoryTime()
     local a = roll(W, ns, 1)
     win.views[a].buttons.greed:Click()
@@ -641,9 +688,15 @@ T.it("a folded card decided late comes back whole and folds again 4 s later (R21
     local whole = win.views[a]:Height()
     W.advance(4)
     T.eq(win.views[a]:Height(), 26, "the ended card folds while the other is open")
+    T.eq(#washes + #pops, 0, "an end without a winner plays nothing")
     decide(G, W, 1, ORLEN, 19, { startTime = began })
     T.eq(a.status, "decided")
     T.eq(win.views[a]:Height(), whole, "the late winner shows on the whole card")
+    local orlen = win.views[a].rows[1]
+    T.eq(#washes, 1, "one wash")
+    T.eq(washes[1], orlen.wash, "on the winner's row")
+    T.eq(#pops, 1, "one crown pop")
+    T.eq(pops[1], orlen.crown)
     T.no(win.done:IsShown())
     T.eq(at(W, win, win.views[a]), 32, "back in its place among the open cards")
     W.advance(3.9)
@@ -651,6 +704,8 @@ T.it("a folded card decided late comes back whole and folds again 4 s later (R21
     W.advance(0.1)
     T.eq(win.views[a]:Height(), 26, "4 s after the new decision it folds again")
     T.eq(b.status, "live")
+    T.eq(#washes, 1, "and nothing plays twice")
+    T.eq(#pops, 1)
 end)
 
 -------------------------------------------------------------------------------
@@ -708,4 +763,71 @@ T.it("Polestar's note sits under the window while both show", function()
     note:Show()
     W.advance(0.1)
     T.eq(select(2, note:GetPoint(1)), loot, "left under the loot window")
+    -- A place the game will not say is not taken: it could not be given back.
+    note.GetPoint = function() return T.secret("TOP"), G.UIParent, T.secret("TOP"), 0, -160 end
+    note:Show()
+    T.eq(note._points[1][2], loot, "a note whose anchor is secret stays where it is")
+end)
+
+-------------------------------------------------------------------------------
+--  Review round 1
+-------------------------------------------------------------------------------
+T.it("a new size repaints every hairline at once", function()
+    local G, W, ns, win = setup()
+    roll(W, ns, 1)
+    local b = roll(W, ns, 2) -- the second card shows its hairline
+    W.advance(0.35)
+    ns.Set("scale", 1.2)
+    local view = win.views[b]
+    T.near(ns.W.Pixel(view), 768 / 1080 / 1.2, 1e-9, "a pixel is less in the window's own units")
+    T.near(view.divider:GetHeight(), ns.W.Pixel(view), 1e-9, "a card's hairline is one pixel at the new size")
+    T.near(win.head.hair:GetHeight(), ns.W.Pixel(win.head), 1e-9, "and so is the header's")
+end)
+
+T.it("a card whose countdown fails stops neither the folds nor the closing", function()
+    local errors = {}
+    local G, W, ns, win = setup(recording(errors))
+    local a, b = roll(W, ns, 1), roll(W, ns, 2)
+    win.views[a].Tick = function() error("broken countdown") end
+    W.advance(1)
+    T.eq(#errors, 1, "the error is reported")
+    T.ok(errors[1]:find("broken countdown", 1, true))
+    W.advance(1)
+    T.eq(#errors, 1, "once")
+    win.views[a].buttons.pass:Click()
+    win.views[b].buttons.pass:Click()
+    decide(G, W, 1, ORLEN, 19)
+    W.advance(1)
+    decide(G, W, 2, ORLEN, 20)
+    W.advance(4)
+    T.eq(win.views[a]:Height(), 26, "the folds go on")
+    T.eq(text(W, win.head.closes), "closes in 6s", "and the countdown")
+    W.advance(6.1)
+    W.advance(0.55)
+    T.no(win:IsShown(), "the window closes")
+end)
+
+T.it("a view whose builder fails is built once and reported once", function()
+    local errors = {}
+    local G, W, ns, win = setup(recording(errors))
+    local built, raised = 0, 0
+    ns.UI.RegisterView("recent", function(parent)
+        built = built + 1
+        return G.CreateFrame("Frame", nil, parent) -- no :Refresh(), no :Height()
+    end)
+    ns.UI.RegisterView("settings", function()
+        raised = raised + 1
+        error("no settings today")
+    end)
+    T.eq(ns.UI.Open("recent"), false, "a view without Refresh and Height does not open")
+    T.eq(ns.UI.Open("recent"), false)
+    T.eq(ns.UI.Toggle("recent"), false)
+    T.eq(built, 1, "its frames are made once")
+    T.eq(ns.UI.Open("settings"), false, "a builder that raises does not open")
+    T.eq(ns.UI.Open("settings"), false)
+    T.eq(raised, 1, "and is not called again")
+    T.eq(#errors, 2, "each is reported once")
+    T.ok(errors[1]:find("recent", 1, true), "naming the view")
+    T.ok(errors[2]:find("no settings today", 1, true))
+    T.no(win:IsShown())
 end)

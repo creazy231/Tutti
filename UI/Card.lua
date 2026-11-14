@@ -17,7 +17,7 @@
 --    view:Height() -> px               9 + 34 + 16 [+ 31 buttons [+ 16 reason]] + 21 a row [+ 24 summary] + 7,
 --                                      or 26 folded; the view's own height follows it
 --    view:SetFolded(bool)              the 26 px line: icon, name → winner, "Need 19"
---    view:Tick()                       the countdown's seconds and bar; the window calls it every second
+--    view:Tick()                       the countdown's seconds and bar; the window calls it every frame it shows
 --    view.divider                      the hairline along the card's top: the window hides it on the first card
 --    ns.Card.NewRow(parent) -> row     one row (.pr), anchored by the caller; Recent rolls paints with it
 --    row:Set(data, opts)               data: a row of ns.Rolls.Rows (or a copy of one); opts = { decided = bool,
