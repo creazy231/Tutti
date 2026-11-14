@@ -32,7 +32,8 @@ import urllib.parse
 
 from PIL import Image
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# Google Chrome: the CHROME environment variable, else where macOS installs it.
+CHROME = os.environ.get("CHROME") or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 OUT = os.path.join("docs", "listing", "animations")
 BACKDROPS = os.path.join("docs", "listing", "backdrops")  # the generated backdrops (R48)
@@ -60,6 +61,17 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+def run(args, timeout=None):
+    """Runs a command; when it fails, what it wrote to stderr is shown and the tool stops."""
+    try:
+        return subprocess.run(args, check=True, capture_output=True, timeout=timeout)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        sys.stderr.write((e.stderr or b"").decode("utf-8", "replace"))
+        code = getattr(e, "returncode", None)
+        sys.exit("make_gifs: %s %s" % (os.path.basename(args[0]),
+                                       "timed out" if code is None else "failed (exit %d)" % code))
+
+
 def backdrops(root, names):
     """Copies the backdrops the GIFs name from docs/listing/backdrops/ into the render dir, which serves them."""
     for name in sorted(names):
@@ -73,10 +85,9 @@ def shoot(url, png, size):
     """One page as a PNG at `size`, with a profile of its own (several Chromes run at once)."""
     profile = tempfile.mkdtemp(prefix="tutti-chrome-")
     try:
-        subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--user-data-dir=" + profile,
-                        "--force-device-scale-factor=1", "--window-size=%d,%d" % size,
-                        "--virtual-time-budget=3000", "--screenshot=" + png, url],
-                       check=True, capture_output=True, timeout=120)
+        run([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--user-data-dir=" + profile,
+             "--force-device-scale-factor=1", "--window-size=%d,%d" % size,
+             "--virtual-time-budget=3000", "--screenshot=" + png, url], timeout=120)
     finally:
         shutil.rmtree(profile, ignore_errors=True)
 
@@ -85,7 +96,7 @@ def make(root, out_dir, port, name, film, params):
     prefix = os.path.join(root, "film-" + film)
     for old in glob.glob(prefix + "-*.html"):
         os.remove(old)
-    subprocess.run(["luajit", "tools/render_ui.lua", prefix, film], check=True, capture_output=True)
+    run(["luajit", "tools/render_ui.lua", prefix, film])
     with open(prefix + ".json") as fh:
         info = json.load(fh)
     frames_dir = os.path.join(root, "gif-" + name)

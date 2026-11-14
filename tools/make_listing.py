@@ -21,10 +21,12 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import urllib.parse
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# Google Chrome: the CHROME environment variable, else where macOS installs it.
+CHROME = os.environ.get("CHROME") or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 OUT = os.path.join("docs", "listing", "screenshots")
 BACKDROPS = os.path.join("docs", "listing", "backdrops")  # the generated backdrops (R48)
 EUI_ACCENT = "#00cfff"  # EllesmereUI's accent, as the "eui" variant of a scene draws it
@@ -67,6 +69,15 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+def run(args):
+    """Runs a command; when it fails, what it wrote to stderr is shown and the tool stops."""
+    try:
+        return subprocess.run(args, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write((e.stderr or b"").decode("utf-8", "replace"))
+        sys.exit("make_listing: %s failed (exit %d)" % (os.path.basename(args[0]), e.returncode))
+
+
 def backdrops(root, names):
     """Copies the backdrops the shots name from docs/listing/backdrops/ into the render dir, which serves them."""
     for name in sorted(names):
@@ -99,8 +110,7 @@ def main():
     backdrops(root, {s[2]["bg"] for s in shots if "bg" in s[2]})
     for scene in sorted({s[1] for s in shots}):
         html, render_args = page(scene)
-        subprocess.run(["luajit", "tools/render_ui.lua", os.path.join(root, html)] + render_args,
-                       check=True, capture_output=True)
+        run(["luajit", "tools/render_ui.lua", os.path.join(root, html)] + render_args)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=root))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
@@ -110,11 +120,14 @@ def main():
             query.update(params)
             url = "http://127.0.0.1:%d/%s?%s" % (port, page(scene)[0], urllib.parse.urlencode(query))
             out = os.path.abspath(os.path.join(out_dir, name + ".png"))
-            subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars",
-                            "--force-device-scale-factor=1",
-                            "--window-size=%s,%s" % (query.get("w", "1920"), query.get("h", "1080")),
-                            "--virtual-time-budget=4000", "--screenshot=" + out, url],
-                           check=True, capture_output=True)
+            profile = tempfile.mkdtemp(prefix="tutti-chrome-")  # a profile of its own, as make_gifs.py's
+            try:
+                run([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--user-data-dir=" + profile,
+                     "--force-device-scale-factor=1",
+                     "--window-size=%s,%s" % (query.get("w", "1920"), query.get("h", "1080")),
+                     "--virtual-time-budget=4000", "--screenshot=" + out, url])
+            finally:
+                shutil.rmtree(profile, ignore_errors=True)
             print("wrote", os.path.relpath(out) if out.startswith(os.getcwd() + os.sep) else out)
     finally:
         server.shutdown()

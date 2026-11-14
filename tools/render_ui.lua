@@ -1013,18 +1013,23 @@ local function buttonOf(rollID, choice)
     return b
 end
 
+-- How wide the window is on the page: its own width at its scale (300 at 100 %).
+local function windowWidth()
+    return rectOf(G.TuttiFrame)[3]
+end
+
 -- Off the page to the right of the window, at the height of `region` (`down` px lower): where the cursor comes from
 -- and goes to.
 local function aside(region, down)
     local _, y = middle(region)
-    return film.home.x + 300 + 150, y + (down or 0)
+    return film.home.x + windowWidth() + 150, y + (down or 0)
 end
 
 -- Just right of the window, at the height of `region` (`down` px lower): where the cursor rests between clicks,
 -- off the window and still on the page.
 local function beside(region, down)
     local _, y = middle(region)
-    return film.home.x + 300 + 12, y + (down or 0)
+    return film.home.x + windowWidth() + 12, y + (down or 0)
 end
 
 -- The player rolls with the mouse: the cursor glides onto the card's button (it lights under the mouse), presses it
