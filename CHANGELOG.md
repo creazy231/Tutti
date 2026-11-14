@@ -39,8 +39,8 @@ First release.
   on the cards of items NaowhForever_BiS ranks for you. Polestar's note about a party
   member's quest item sits under the window.
 - Settings in the window (the gear): Roll in Tutti, close after the last roll, sound when
-  you win, accent (class colour or EllesmereUI's) and size (80 to 130 %). `/tutti`,
-  `/tutti settings` and `/tutti demo`.
+  you win, accent (class colour or EllesmereUI's) and scale (50 to 200 %, the window and
+  its menus). `/tutti`, `/tutti settings` and `/tutti demo`.
 - Follows EllesmereUI's panel colour and font live; class colour accent by default. Works
   without EllesmereUI.
 - Every game version: Retail, Classic Era, TBC Anniversary, Wrath (and Titan-Reforged),

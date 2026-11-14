@@ -8,8 +8,8 @@
 --                      gamepad interface, where Blizzard's gamepad roll frame takes the rolls, a line that says so
 --                      and no button), Close after the last roll (5, 10, 20, 30 seconds or never)
 --    WHEN YOU WIN      Sound (Soft chime, played when it is chosen, or None)
---    LOOK              Accent (only with EllesmereUI: without it the class colour is the only accent), Size (80 to
---                      130 % in steps of 5; a dragged knob applies when it is let go, as the window grows under it)
+--    LOOK              Accent (only with EllesmereUI: without it the class colour is the only accent), Scale (50 to
+--                      200 % in steps of 5; a dragged knob applies when it is let go, as the window grows under it)
 --    ns.Settings.view  the view's frame, once the window has built it (registered as "settings")
 -------------------------------------------------------------------------------
 local _, ns = ...
@@ -26,7 +26,7 @@ local ROW_PAD, GAP = 6, 10                                -- .row padding and ga
 local LABEL_H, LABEL_SIZE, DESC_GAP = 15, 12.5, 1         -- .rl b: regular 12.5 on a 15 px line; .rl small 1 px under
 local RELOAD_H, RELOAD_PAD = 20, 9                        -- the Reload button: Sotto's in-line action
 
-local SIZE_MIN, SIZE_MAX, SIZE_STEP = 80, 130, 5          -- the size, in percent
+local SCALE_MIN, SCALE_MAX, SCALE_STEP = 50, 200, 5       -- the scale, in percent
 local CHIME = W.MEDIA .. "Sounds\\chime.ogg"
 
 -- Words.
@@ -69,21 +69,22 @@ local function reload()
     if fn then fn() end
 end
 
--- The size setting in percent, as the slider has it: in steps of 5, from 80 to 130.
-local function sizeNow()
+-- The Scale setting in percent, as the slider has it: in steps of 5, from 50 to 200. A scale outside them (a
+-- damaged setting) is 100 %, as the window takes it.
+local function scaleNow()
     local scale = ns.Clear(ns.Get("scale"), "number")
-    if not scale or scale ~= scale then scale = 1 end
-    local percent = floor(scale * 100 / SIZE_STEP + 0.5) * SIZE_STEP
-    return max(SIZE_MIN, min(SIZE_MAX, percent))
+    if not scale or scale ~= scale or scale < SCALE_MIN / 100 or scale > SCALE_MAX / 100 then scale = 1 end
+    local percent = floor(scale * 100 / SCALE_STEP + 0.5) * SCALE_STEP
+    return max(SCALE_MIN, min(SCALE_MAX, percent))
 end
 
--- The size slider. Dragging the knob would rescale the window, and the slider in it, under the cursor, and the
--- size would chase itself; so a size picked with the mouse held is kept, shown on the slider, and applied when the
--- mouse lets go (or the slider hides). The wheel applies at once.
-local function sizeSlider(parent)
+-- The Scale slider. Dragging the knob would rescale the window, and the slider in it, under the cursor, and the
+-- scale would chase itself; so a scale picked with the mouse held is kept, shown on the slider, and applied when
+-- the mouse lets go (or the slider hides). The wheel applies at once.
+local function scaleSlider(parent)
     local holding, held = false, nil
-    local slider = W.Slider(parent, SIZE_MIN, SIZE_MAX, SIZE_STEP,
-        function() return held or sizeNow() end,
+    local slider = W.Slider(parent, SCALE_MIN, SCALE_MAX, SCALE_STEP,
+        function() return held or scaleNow() end,
         function(percent)
             if holding then held = percent else ns.Set("scale", percent / 100) end
         end,
@@ -219,7 +220,7 @@ end
 
 -- Every control from the settings, the reload hint, the rows that are wanted, and the layout.
 local function refresh(view)
-    for _, r in ipairs({ view.roll, view.closeAfter, view.sound, view.accent, view.size }) do r.control:Refresh() end
+    for _, r in ipairs({ view.roll, view.closeAfter, view.sound, view.accent, view.scale }) do r.control:Refresh() end
     local gamepad = ns.Popups.Gamepad() == true
     local reloadNeeded = not gamepad and ns.Popups.ReloadNeeded() == true
     view.roll.desc:SetText(gamepad and GAMEPAD_LINE or reloadNeeded and RELOAD_LINE or ROLL_LINE)
@@ -247,8 +248,8 @@ local function build(parent)
     heading(view, "LOOK")
     view.accent = newRow(view, "Accent")
     view.accent.control = W.Segmented(view.accent, ACCENTS, getter("accent"), setter("accent"))
-    view.size = newRow(view, "Size")
-    view.size.control = sizeSlider(view.size)
+    view.scale = newRow(view, "Scale")
+    view.scale.control = scaleSlider(view.scale)
 
     function view:Refresh() refresh(self) end
     function view:Height() return self.height end

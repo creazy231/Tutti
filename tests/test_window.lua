@@ -681,7 +681,7 @@ end
 T.it("cards that wait on the player bring the first of them into sight; a new one ends the player's own scroll",
     function()
     local G, W, ns, win = setup()
-    ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
+    ns.Set("scale", 1.3) -- a large scale: a boss drop of three is more than the window holds
     local cards = {}
     for n = 1, 3 do cards[n] = roll(W, ns, n, REFUSED) end -- three rolls at once
     W.advance(0.35)

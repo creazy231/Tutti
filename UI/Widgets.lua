@@ -415,6 +415,7 @@ end
 
 local function buildMenu()
     menu = CreateFrame("Frame", "TuttiMenu", UIParent)
+    menu.scale = 1
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetToplevel(true)
     menu:EnableMouse(true)
@@ -434,13 +435,30 @@ local function buildMenu()
     tinsert(UISpecialFrames, "TuttiMenu")
 end
 
+-- The scale of what opens the menu against UIParent's: the window's (the Scale setting), so the menu is as large
+-- as the window it opens from.
+local function openerScale(anchor)
+    local scale = ns.Clear(anchor:GetEffectiveScale(), "number")
+    local parentScale = ns.Clear(UIParent:GetEffectiveScale(), "number")
+    if not (scale and parentScale and scale > 0 and parentScale > 0) then return 1 end
+    return scale / parentScale
+end
+
 -- items: { { text, func, checked, disabled, color } ... }
 -- align "RIGHT" opens the menu leftwards from the anchor's right edge (for
--- anchors near the right edge of a window).
+-- anchors near the right edge of a window). The menu takes the scale of what
+-- opens it; a new one paints everything again, so its hairlines stay one
+-- physical pixel.
 function W.Menu(anchor, items, width, align)
     if not menu then buildMenu() end
     if menu:IsShown() and menu.anchor == anchor then W.CloseMenu(); return menu end
     menu.anchor = anchor
+    local scale = openerScale(anchor)
+    if scale ~= menu.scale then
+        menu.scale = scale
+        menu:SetScale(scale)
+        repaintAll()
+    end
     local widest = 0
     for i, item in ipairs(items) do
         local row = menuRow(i)

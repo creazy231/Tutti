@@ -68,7 +68,7 @@ When an item drops in your group, Tutti opens by itself and shows who picked Nee
 
 ## Settings
 
-The gear in the window's header: Roll in Tutti · close after the last roll (5, 10, 20 or 30 seconds, or never) · sound when you win (soft chime or none) · accent (class colour or EllesmereUI's, with EllesmereUI) · size (80 to 130 %). Changes apply at once.
+The gear in the window's header: Roll in Tutti · close after the last roll (5, 10, 20 or 30 seconds, or never) · sound when you win (soft chime or none) · accent (class colour or EllesmereUI's, with EllesmereUI) · scale (50 to 200 %). Changes apply at once.
 
 ## Commands
 

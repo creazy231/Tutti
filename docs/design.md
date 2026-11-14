@@ -166,7 +166,9 @@ When a roll starts while Recent rolls or Settings is showing, the window switche
 - **Close after the last roll:** 10 seconds. The choices are 5, 10, 20, 30 seconds and Never.
 - **Sound when you win:** Soft chime or None.
 - **Accent:** Class colour (lifted until it reads at 4.5:1, as in Sotto) or EllesmereUI's accent.
-- **Size:** 80–130 %, default 100 %.
+- **Scale:** 50–200 % in steps of 5, default 100 % (R53; before it, "Size", 80–130 %). The window and its menus;
+  the window's top-left corner stays put. A knob dragged with the mouse held applies when it is let go (the window
+  would otherwise grow under the cursor); the wheel applies at once.
 
 Position: drag the header. It is saved and kept on screen.
 

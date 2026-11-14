@@ -4,7 +4,7 @@
 --  item in arrival order; a decided card folds into a line under "DONE" 4 s after its decision while another
 --  card is open), Recent rolls and Settings (Task 12's views, registered here). It opens on every new roll,
 --  closes itself `closeAfter` seconds after the last roll is decided (the mouse over it keeps it open), plays
---  the chime when the player wins, remembers where it was dragged and follows the size setting.
+--  the chime when the player wins, remembers where it was dragged and follows the Scale setting.
 --  A card that waits on the player is never left out of sight (R45, "Keeping the waiting cards in sight"): the
 --  rolls bring the oldest of them whole into view after every change and on every return to them, nothing moves
 --  under the mouse right after the player's own pick or while that card's buttons show (R50), and no fold happens
@@ -69,7 +69,7 @@ local HOLD = 1     -- after the player's own pick, the rolls do not scroll under
 local URGENT = 10  -- a card that waits on the player with this little time left brings the rolls back
 local EPSILON = 1e-6 -- times are sums of floats: "4 s after" is 4 to within this
 
-local SCALE_MIN, SCALE_MAX = 0.5, 2 -- a size outside this (a damaged setting) reads as 100 %
+local SCALE_MIN, SCALE_MAX = 0.5, 2 -- a scale outside this (a damaged setting) reads as 100 %
 local CHIME = W.MEDIA .. "Sounds\\chime.ogg"
 
 -- Words.
@@ -99,7 +99,7 @@ local contentHeight, visibleHeight = 0, 0
 local byHand = false       -- the player has scrolled the rolls with the wheel (see `reveal`)
 local pickedAt             -- GetTime() of the player's last own pick (see `reveal`)
 local heldScroll = false   -- a reveal waits for the mouse (see `reveal`); it is done when the hold ends
-local applied = 1          -- the size last given to the window (a new frame's scale is 1)
+local applied = 1          -- the scale last given to the window (a new frame's is 1)
 
 -------------------------------------------------------------------------------
 --  Small helpers
@@ -168,8 +168,8 @@ local function closeAfter()
     return (seconds and seconds > 0) and seconds or 0
 end
 
--- The size setting as a scale.
-local function sizeSetting()
+-- The Scale setting (Settings, 50 to 200 %) as a scale.
+local function scaleSetting()
     local scale = ns.Clear(ns.Get("scale"), "number")
     if not scale or scale ~= scale or scale < SCALE_MIN or scale > SCALE_MAX then return 1 end
     return scale
@@ -390,17 +390,17 @@ local function stayOpen()
     closing, closingByItself = nil, nil
 end
 
--- The size setting, and the saved top-left corner. The corner is kept in UIParent's units and the anchor's
+-- The Scale setting, and the saved top-left corner. The corner is kept in UIParent's units and the anchor's
 -- offsets are in the window's own (they grow with its scale), so they are divided by the scale: the corner
--- stays where it was saved, whatever the size. A hairline is one physical pixel at the scale it was painted
--- for (W.Pixel), so a new size paints everything again, the cards included, as new looks do. Whether the size is
--- new is asked of the size last given, not of GetScale: the client keeps a scale as a 32-bit float, so 1.1 reads
+-- stays where it was saved, whatever the scale. A hairline is one physical pixel at the scale it was painted
+-- for (W.Pixel), so a new scale paints everything again, the cards included, as new looks do. Whether the scale
+-- is new is asked of the scale last given, not of GetScale: the client keeps a scale as a 32-bit float, so 1.1 reads
 -- back as 1.100000023841858 and would look new at every opening and every drag.
 local function place()
     local saved = ns.DB and ns.DB.window or {}
     local home = ns.DEFAULTS.window
     local x, y = ns.Clear(saved.x, "number") or home.x, ns.Clear(saved.y, "number") or home.y
-    local scale = sizeSetting()
+    local scale = scaleSetting()
     local resized = scale ~= applied
     applied = scale
     win:SetScale(scale)
@@ -1069,7 +1069,7 @@ end)
 
 ns.Listen("SETTING_CHANGED", function(key)
     if key == "scale" then
-        if fading() then return end -- on its way out: the next open places it at the new size
+        if fading() then return end -- on its way out: the next open places it at the new scale
         Fx.Stop(win) -- a rise in progress would put the old place back
         place()
         relayout()

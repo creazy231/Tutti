@@ -76,8 +76,8 @@ T.it("the five rows", function()
     T.eq(text(W, seg.buttons[1].text), "Class colour")
     T.eq(text(W, seg.buttons[2].text), "EllesmereUI")
     T.ok(seg.buttons[1].selected, "the class colour is the setting")
-    T.eq(text(W, view.size.label), "Size")
-    T.eq(text(W, view.size.control.value), "100%")
+    T.eq(text(W, view.scale.label), "Scale")
+    T.eq(text(W, view.scale.control.value), "100%")
 
     -- The mockup's .settings (padding 2 / 10 / 10), .sh (10 px above, 13 high, 2 below) and .row (6 px padding,
     -- the control 10 px after the text, a hairline under every row but the last).
@@ -89,7 +89,7 @@ T.it("the five rows", function()
     same({ view.heads[1].label:GetTextColor() }, { ns.Theme.Color("muted") })
     local order = {
         { view.roll, 14 }, { view.closeAfter, 22 }, "head", { view.sound, 22 }, "head", { view.accent, 21 },
-        { view.size, 16, true },
+        { view.scale, 16, true },
     }
     local top, heads = 32 + 2 + 10 + 13 + 2, 1
     for _, item in ipairs(order) do
@@ -178,9 +178,9 @@ T.it("close-after choices", function()
     end
 end)
 
-T.it("the size slider sets scale", function()
+T.it("the Scale slider: 50 to 200 % in steps of 5", function()
     local G, W, ns, win, view = setup()
-    local slider = view.size.control
+    local slider = view.scale.control
     slider:SetTo(110)
     T.near(ns.Get("scale"), 1.1, 1e-9)
     T.eq(text(W, slider.value), "110%")
@@ -189,33 +189,72 @@ T.it("the size slider sets scale", function()
     T.near(ns.Get("scale"), 1.15, 1e-9, "a wheel notch: 5 %")
     slider:SetTo(97)
     T.near(ns.Get("scale"), 0.95, 1e-9, "in steps of 5")
-    slider:SetTo(200)
-    T.near(ns.Get("scale"), 1.3, 1e-9, "130 % at most")
-    T.eq(text(W, slider.value), "130%")
+    slider:SetTo(500)
+    T.near(ns.Get("scale"), 2, 1e-9, "200 % at most")
+    T.eq(text(W, slider.value), "200%")
+    T.near(win:GetScale(), 2, 1e-9)
     slider:SetTo(10)
-    T.near(ns.Get("scale"), 0.8, 1e-9, "80 % at least")
+    T.near(ns.Get("scale"), 0.5, 1e-9, "50 % at least")
+    T.eq(text(W, slider.value), "50%")
+    T.near(win:GetScale(), 0.5, 1e-9)
+end)
+
+T.it("a damaged scale shows as the 100 % the window takes it for", function()
+    for _, bad in ipairs({ 5, 0.1, "big" }) do
+        local G, W, ns, win, view = setup({ db = { settings = { scale = bad } } })
+        T.eq(win:GetScale(), 1, "scale " .. tostring(bad))
+        T.eq(text(W, view.scale.control.value), "100%", "scale " .. tostring(bad))
+    end
+end)
+
+-- How thick the frame's own hairlines are: every texture on it thinner than two units.
+local function hairs(frame)
+    local list = {}
+    for _, r in ipairs(frame._regions) do
+        if r._type == "Texture" then
+            local d = (r._h and r._h > 0 and r._h < 1.9 and r._h) or (r._w and r._w > 0 and r._w < 1.9 and r._w)
+            if d then list[#list + 1] = d end
+        end
+    end
+    return list
+end
+
+T.it("menus open at the window's scale", function()
+    local G, W, ns, win, view = setup()
+    ns.Set("scale", 1.5)
+    local menu = menuOf(ns, view.closeAfter.control)
+    T.ok(menu:IsShown())
+    T.near(menu:GetScale(), 1.5, 1e-9, "as large as the window")
+    local lines = hairs(menu)
+    T.ok(#lines >= 4, "its border")
+    for _, d in ipairs(lines) do T.near(d, 768 / 1080 / 1.5, 1e-9, "one physical pixel at that scale") end
+    menu:Hide()
+    ns.Set("scale", 0.75)
+    menu = menuOf(ns, view.closeAfter.control)
+    T.near(menu:GetScale(), 0.75, 1e-9, "and at a new one")
+    for _, d in ipairs(hairs(menu)) do T.near(d, 768 / 1080 / 0.75, 1e-9) end
 end)
 
 -------------------------------------------------------------------------------
 --  Edge cases
 -------------------------------------------------------------------------------
-T.it("a dragged size applies when the knob is let go", function()
+T.it("a dragged scale applies when the knob is let go", function()
     local G, W, ns, win, view = setup()
-    local slider = view.size.control
-    -- The window grows under the cursor while the knob is dragged: applied at once, the size would chase itself.
+    local slider = view.scale.control
+    -- The window grows under the cursor while the knob is dragged: applied at once, the scale would chase itself.
     W.cursorX = slider.track:GetLeft() + 0.6 * slider.track:GetWidth()
     slider:_fire("OnMouseDown", "LeftButton")
-    T.eq(text(W, slider.value), "110%", "the knob follows the cursor")
+    T.eq(text(W, slider.value), "140%", "the knob follows the cursor")
     T.eq(ns.Get("scale"), 1, "the window waits")
     W.cursorX = slider.track:GetLeft() + 0.8 * slider.track:GetWidth()
     W.advance(0.1)
-    T.eq(text(W, slider.value), "120%")
+    T.eq(text(W, slider.value), "170%")
     T.eq(ns.Get("scale"), 1)
     slider:_fire("OnMouseUp", "LeftButton")
-    T.near(ns.Get("scale"), 1.2, 1e-9, "let go: the size applies")
-    T.near(win:GetScale(), 1.2, 1e-9)
+    T.near(ns.Get("scale"), 1.7, 1e-9, "let go: the scale applies")
+    T.near(win:GetScale(), 1.7, 1e-9)
     slider:_fire("OnMouseWheel", -1)
-    T.near(ns.Get("scale"), 1.15, 1e-9, "the wheel still applies at once")
+    T.near(ns.Get("scale"), 1.65, 1e-9, "the wheel still applies at once")
 end)
 
 T.it("sound: Soft chime or None, the chime played when chosen", function()
@@ -245,9 +284,9 @@ T.it("without EllesmereUI the Accent row is left out", function()
     local G, W, ns, win, view = setup({ eui = false })
     T.no(view.accent:IsShown(), "nothing to choose: the class colour is the accent")
     local _, headY = box(W, win, view.heads[3])
-    local _, sizeY = box(W, win, view.size)
-    T.eq(sizeY, headY + 13 + 2, "Size right under LOOK")
-    T.no(view.size.hair:IsShown())
+    local _, scaleY = box(W, win, view.scale)
+    T.eq(scaleY, headY + 13 + 2, "Scale right under LOOK")
+    T.no(view.scale.hair:IsShown())
     T.eq(win:GetHeight(), 32 + view:Height())
 end)
 

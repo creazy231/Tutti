@@ -68,7 +68,8 @@ The gear in the window's header. Changes apply at once.
 
 Roll in Tutti (Need, Greed and Pass on each card, Blizzard's roll popups hidden) · close
 after the last roll (5, 10, 20 or 30 seconds, or never) · sound when you win (soft chime or
-none) · accent (class colour or EllesmereUI's, with EllesmereUI) · size (80 to 130 %).
+none) · accent (class colour or EllesmereUI's, with EllesmereUI) · scale (50 to 200 %; the
+window and its menus).
 
 Turning "Roll in Tutti" on takes effect at once. Turning it off brings Blizzard's popups
 back after a `/reload`; the setting says so and offers a Reload button. Until then the cards
