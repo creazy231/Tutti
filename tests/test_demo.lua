@@ -253,3 +253,26 @@ T.it("with Roll in Tutti off at login the demo plays without buttons, to the sam
     T.ok(row(ns, gloves, 5).isWinner, "the player wins the gloves")
     T.eq(#W.rolled, 0, "RollOnLoot never called")
 end)
+
+T.it("in the gamepad interface the demo still plays in the window, without buttons, and closes 10 s after", function()
+    local G, W, ns, win = setup({ gamepad = true })
+    local to = timeline(W)
+    T.eq(ns.Demo.Start(), true)
+    local axe, gloves = ns.Rolls.Cards()[1], ns.Rolls.Cards()[2]
+    T.ok(win:IsShown(), "the player asked for it: the window opens")
+    for _, button in pairs(win.views[axe].buttons) do
+        T.no(button:IsShown(), "no roll buttons in the gamepad interface, as on every card")
+    end
+    to(3.7)
+    T.eq(axe.mine, "greed", "the script picks for the player all the same")
+    to(12.3)
+    T.ok(row(ns, gloves, 5).isWinner, "the player wins the gloves")
+    T.eq(chimes(W), 1, "the demo's win chimes as ever")
+    to(22.25)
+    T.ok(win:IsShown())
+    to(22.35)
+    to(22.95)
+    T.no(win:IsShown(), "closed 10 s after")
+    T.eq(#ns.Rolls.Cards(), 0)
+    T.eq(#W.rolled, 0, "RollOnLoot never called")
+end)

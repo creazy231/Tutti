@@ -233,3 +233,74 @@ T.it("DB_READY switches the popups off and says so", function()
     T.eq(ns.Popups.Suppressed(), true)
     T.eq(#seen, 1, "one message")
 end)
+
+-------------------------------------------------------------------------------
+--  WoW Forever's gamepad interface: Blizzard's gamepad roll frame takes every roll
+-------------------------------------------------------------------------------
+-- Every GAMEPAD_CHANGED, in order, as "true" or "false".
+local function gamepadNews(ns)
+    local seen = {}
+    ns.Listen("GAMEPAD_CHANGED", function(on) seen[#seen + 1] = tostring(on) end)
+    return seen
+end
+
+T.it("in the gamepad interface the player does not roll in Tutti", function()
+    local G, W, ns = T.load({ gamepad = true })
+    T.eq(ns.Popups.Gamepad(), true)
+    T.eq(ns.Popups.RollInTutti(), false, "Blizzard's gamepad roll frame takes the rolls")
+    T.eq(unregistered(W), "START_LOOT_ROLL", "the mouse interface's popups still go off, for when it comes back")
+    T.eq(#W.registered, 0)
+    G, W, ns = T.load()
+    T.eq(ns.Popups.Gamepad(), false, "the mouse interface")
+    T.eq(ns.Popups.RollInTutti(), true)
+end)
+
+T.it("GAMEPAD_CHANGED comes a frame after the interface style changes, once per change", function()
+    local G, W, ns = T.load()
+    local seen = gamepadNews(ns)
+    W.switchStyle("Gamepad")
+    T.eq(#seen, 0, "not during the game's event: the style reads right only afterwards")
+    W.advance(0)
+    T.eq(table.concat(seen, ","), "true")
+    T.eq(ns.Popups.RollInTutti(), false)
+    W.switchStyle("Mkb")
+    W.switchStyle("Gamepad")
+    W.advance(0)
+    T.eq(table.concat(seen, ","), "true", "a burst that ends where it began says nothing")
+    W.switchStyle("Mkb")
+    W.advance(0)
+    T.eq(table.concat(seen, ","), "true,false")
+    T.eq(ns.Popups.RollInTutti(), true, "back in the mouse interface, the cards again")
+    W.advance(1)
+    T.eq(#seen, 2, "and nothing more")
+end)
+
+T.it("a style the client lacks or keeps secret counts as the mouse interface", function()
+    local errors = {}
+    local G, W, ns = T.load({ gamepad = true, setup = recordErrors(errors) })
+    G.C_InputInterfaceStyle = nil
+    T.eq(ns.Popups.Gamepad(), false, "no API")
+    G.C_InputInterfaceStyle = { GetCurrentStyle = "not a function" }
+    T.eq(ns.Popups.Gamepad(), false)
+    G.C_InputInterfaceStyle = { GetCurrentStyle = function() return T.secret(1) end }
+    T.eq(ns.Popups.Gamepad(), false, "a secret style is never compared")
+    G.C_InputInterfaceStyle = { GetCurrentStyle = function() error("style broke") end }
+    T.eq(ns.Popups.Gamepad(), false, "a call that raises")
+    G.C_InputInterfaceStyle = { GetCurrentStyle = function() return 1 end }
+    G.Enum.InputDeviceInterfaceType = nil
+    T.eq(ns.Popups.Gamepad(), false, "no enum to compare with")
+    G.Enum.InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 }
+    T.eq(ns.Popups.Gamepad(), true, "everything there again")
+    T.eq(#errors, 0, "nothing was reported")
+end)
+
+T.it("a client without the style's event still reads the style", function()
+    local errors = {}
+    local G, W, ns = T.load({ gamepad = true, setup = function(G, W)
+        recordErrors(errors)(G)
+        W.unknownEvents.INPUT_DEVICE_INTERFACE_TRANSITION = true
+    end })
+    T.eq(ns.Popups.Gamepad(), true)
+    T.eq(ns.Popups.RollInTutti(), false)
+    T.eq(#errors, 0)
+end)

@@ -82,7 +82,7 @@ The clock in the window's header and the addon compartment (the addon menu on th
 
 - **Made for WoW Forever.** For now Tutti runs on WoW Forever only.
 - **Blizzard's roll popups** are replaced while "Roll in Tutti" is on. Turning it off brings them back after a /reload; the setting offers a Reload button.
-- **Gamepad interface:** with it on, Blizzard's gamepad roll frame still shows next to Tutti.
+- **Gamepad interface:** with it on, Tutti steps aside and Blizzard's own gamepad roll frame takes the rolls.
 - **Soulbound items** still ask Blizzard's own confirmation. Tutti never confirms for you.
 - **Group loot only:** with free-for-all, master or personal loot, nothing opens.
 ```

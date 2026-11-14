@@ -1000,6 +1000,22 @@ function F.new(opts)
         }
     end
 
+    ---------------------------------------------------------------------------
+    --  The interface style (WoW Forever's gamepad interface, a switch in the game's Gamepad settings), with
+    --  Blizzard's enum and its numbers (InputConstantsDocumentation.lua). opts.gamepad starts in the Gamepad style.
+    --  W.switchStyle("Gamepad" | "Mkb") changes it the way that is hardest on the addon:
+    --  INPUT_DEVICE_INTERFACE_TRANSITION(new, old) comes first, while GetCurrentStyle still reads the old style,
+    --  which it reads right only afterwards (EllesmereUI: "the style reads right one frame later").
+    ---------------------------------------------------------------------------
+    G.Enum.InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 }
+    W.interfaceStyle = opts.gamepad and 1 or 0
+    G.C_InputInterfaceStyle = { GetCurrentStyle = function() return W.interfaceStyle end }
+    function W.switchStyle(style)
+        local new, old = G.Enum.InputDeviceInterfaceType[style], W.interfaceStyle
+        W.fire("INPUT_DEVICE_INTERFACE_TRANSITION", new, old)
+        W.interfaceStyle = new
+    end
+
     -- EllesmereUI stand-in (only when a test asks for it).
     function W.installEUI(o)
         o = o or {}

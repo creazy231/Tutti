@@ -13,18 +13,28 @@
 --    ns.Popups.RollInTutti()     the player rolls on Tutti's cards: the setting is on, or the popups are
 --                                switched off (until a /reload the cards are then the only way to roll,
 --                                whatever the setting says). Off at login, the popups are Blizzard's and the
---                                cards show no roll buttons.
+--                                cards show no roll buttons. Never in the gamepad interface (below).
+--    ns.Popups.Gamepad()         WoW Forever's gamepad interface is on (the game's Gamepad settings): Blizzard's
+--                                gamepad roll frame takes every roll then, and Tutti stays out of its way (the
+--                                window opens for no roll, UI/Window.lua). Read live, with Blizzard's own test.
 --  Message "POPUPS_CHANGED" when either answer of Suppressed and ReloadNeeded changes.
+--  Message "GAMEPAD_CHANGED"(on) a frame after the interface style changed, when Gamepad()'s answer did.
 --  The way back is not Tutti's to take: GameEvent.RegisterInternalEvent is never called, because a
 --  handler registered by an addon would run tainted. Bringing the popups back takes a /reload. When
 --  GameEvent or its function is missing the popups stay Blizzard's, and Tutti works next to them.
+--  The gamepad interface needs none of this: the router's handler does nothing in it
+--  (GameEvent.HandleStartLootRoll returns early), and Blizzard's gamepad roll frame
+--  (GamepadGroupLootRollFrame, Blizzard_UIPanels_Game/Mainline/GroupLootFrame.lua) registers
+--  START_LOOT_ROLL on itself when the style comes on, lists the rolls still running, and lets them go
+--  when the style goes.
 --  Known gaps, accepted and without code (Tutti never hides a Blizzard frame, writes to one, or
 --  touches StaticPopup):
 --    - after a /reload in the middle of a roll, Blizzard's PLAYER_ENTERING_WORLD handler
 --      (GroupLootContainer_RefreshRolls) can still show a popup for the roll;
---    - a Blizzard bind-confirmation dialog whose roll has ended stays open until it is clicked;
---    - with the gamepad interface on, the router's handler does nothing anyway and Blizzard's
---      gamepad roll frame listens for START_LOOT_ROLL by itself, which this does not reach.
+--    - the same when the player leaves the gamepad interface in the middle of a roll: Blizzard puts
+--      its popups back for the rolls still running (GroupLootContainer_UninitGamepad), next to the
+--      cards that wait on the player;
+--    - a Blizzard bind-confirmation dialog whose roll has ended stays open until it is clicked.
 -------------------------------------------------------------------------------
 local _, ns = ...
 local Popups = {}
@@ -50,7 +60,21 @@ function Popups.ReloadNeeded()
     return switchedOff and not wanted()
 end
 
+-- Blizzard's own test (InputUtil.IsGamepadUIEnabled), every part through ns.Clear: a style the client lacks, keeps
+-- secret or fails to give counts as the mouse interface.
+function Popups.Gamepad()
+    local api = ns.Clear(C_InputInterfaceStyle, "table")
+    local current = api and ns.Clear(api.GetCurrentStyle, "function")
+    local enum = ns.Clear(Enum, "table")
+    local styles = enum and ns.Clear(enum.InputDeviceInterfaceType, "table")
+    local gamepad = styles and ns.Clear(styles.Gamepad, "number")
+    if not (current and gamepad) then return false end
+    local ok, style = pcall(current)
+    return ok and ns.Clear(style, "number") == gamepad
+end
+
 function Popups.RollInTutti()
+    if Popups.Gamepad() then return false end
     return ns.Get("rollInTutti") == true or switchedOff
 end
 
@@ -79,4 +103,26 @@ ns.Listen("DB_READY", function() Popups.Apply() end)
 
 ns.Listen("SETTING_CHANGED", function(key)
     if key == "rollInTutti" then Popups.Apply() end
+end)
+
+-- The interface style. The game says it changes before the style reads right (EllesmereUI: a frame later), so it is
+-- read a frame after the event, once for a burst of them. What "GAMEPAD_CHANGED" stands for starts as the answer at
+-- login, taken again then in case the client knew it only by then.
+local gamepadSaid = Popups.Gamepad()
+local gamepadDue = false
+
+local function gamepadCheck()
+    gamepadDue = false
+    local on = Popups.Gamepad()
+    if on == gamepadSaid then return end
+    gamepadSaid = on
+    ns.Fire("GAMEPAD_CHANGED", on)
+end
+
+ns.On("PLAYER_LOGIN", function() gamepadSaid = Popups.Gamepad() end)
+
+ns.On("INPUT_DEVICE_INTERFACE_TRANSITION", function()
+    if gamepadDue then return end
+    gamepadDue = true
+    ns.After(0, gamepadCheck)
 end)

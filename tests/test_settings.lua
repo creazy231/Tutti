@@ -275,3 +275,23 @@ T.it("a new font that wraps the lines otherwise has the window fit the rows agai
     T.ok(view:Height() > before, "the row grew")
     T.eq(win:GetHeight(), 32 + view:Height(), "and the window with it")
 end)
+
+T.it("in the gamepad interface the roll line says the game's own roll window is used", function()
+    local GAMEPAD_LINE = "With the Gamepad interface style, the game's own roll window is used"
+    local G, W, ns, win, view = setup({ gamepad = true })
+    local function line() return W.plain(view.roll.desc:GetText() or "") end
+    T.eq(text(W, view.roll.desc), GAMEPAD_LINE)
+    T.no(view.roll.reload:IsShown())
+    ns.Set("rollInTutti", false)
+    T.ok(ns.Popups.ReloadNeeded(), "the mouse interface's popups would need a reload")
+    T.eq(line(), GAMEPAD_LINE, "but in the gamepad interface they play no part")
+    T.no(view.roll.reload:IsShown(), "so no Reload button")
+    W.switchStyle("Mkb")
+    W.advance(0)
+    T.eq(line(), RELOAD_LINE, "back in the mouse interface, the reload hint")
+    T.ok(view.roll.reload:IsShown())
+    W.switchStyle("Gamepad")
+    W.advance(0)
+    T.eq(line(), GAMEPAD_LINE, "and the gamepad line again with the gamepad interface")
+    T.no(view.roll.reload:IsShown())
+end)

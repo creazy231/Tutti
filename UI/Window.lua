@@ -11,6 +11,10 @@
 --  under it while a card waits. The count pill shows in every view, in the accent outside the rolls while a card
 --  waits there, and a click on it leads back; with URGENT seconds left on such a card the window goes back to the
 --  rolls by itself.
+--  In WoW Forever's gamepad interface (ns.Popups.Gamepad) Blizzard's gamepad roll frame takes the rolls and the window
+--  stays out of its way: no roll opens it or chimes (the demo, the player's own, still does), its cards show no
+--  buttons, the switch to that interface closes it, and closed it keeps no card that is over. Back in the mouse
+--  interface, a card that waits on the player brings it back.
 --    TuttiFrame (ns.UI.win)          UIParent's child, strata HIGH, kept on screen, moved by its header
 --    ns.UI.Open(view) -> ok          "rolls" (the default), "recent" or "settings"; it rises when it was
 --                                    hidden. A view nobody registered does not open (false); nor does another
@@ -933,9 +937,22 @@ end)
 -------------------------------------------------------------------------------
 --  Wiring
 -------------------------------------------------------------------------------
--- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden). A
--- new card that waits on the player ends the player's own scroll (`byHand`): the layout's reveal brings the oldest
--- waiting card into sight.
+-- WoW Forever's gamepad interface: Blizzard's gamepad roll frame takes the game's rolls, so none of them opens the
+-- window or chimes. The demo is the player's own: it plays as ever.
+local function standsDown(card) return not card.demo and ns.Popups.Gamepad() end
+
+-- Closed in the gamepad interface, the window keeps no card that is over, as a window that closes forgets them: a
+-- frame after a decision (not during it, while Core/Rolls.lua is still at work on the card), the cards that are over
+-- are forgotten. Recent rolls keeps them.
+local sweepDue = false
+local function sweep()
+    sweepDue = false
+    if ns.Popups.Gamepad() and not win:IsShown() then Rolls.ForgetDecided() end
+end
+
+-- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden); in the
+-- gamepad interface it stays as it is. A new card that waits on the player ends the player's own scroll (`byHand`):
+-- the layout's reveal brings the oldest waiting card into sight.
 ns.Listen("CARD_ADDED", function(card)
     if type(card) ~= "table" or views[card] then return end
     local view = Card.Acquire(rolls)
@@ -945,7 +962,13 @@ ns.Listen("CARD_ADDED", function(card)
     awaited[card] = waits(card)
     if awaited[card] then byHand = false end
     refold()
-    UI.Open("rolls")
+    if standsDown(card) then
+        updateCountdown()
+        relayout()
+        drawHeader()
+    else
+        UI.Open("rolls")
+    end
 end)
 
 -- The card draws what changed, and the rolls are laid out again (the reveal with them). The player's own pick
@@ -970,7 +993,8 @@ end)
 
 -- A result. A card decided after it ended (R21) and already folded comes back whole (once the mouse lets folds
 -- happen) and folds again 4 s after that; the countdown starts over, so the result stays on screen its whole time,
--- and a fade-out of the countdown's own is called off for it. The chime when the player won.
+-- and a fade-out of the countdown's own is called off for it. The chime when the player won (not in the gamepad
+-- interface). Closed in the gamepad interface, the window forgets the card a frame later (`sweep`).
 ns.Listen("CARD_DECIDED", function(card)
     local view = views[card]
     if not view then return end
@@ -979,12 +1003,16 @@ ns.Listen("CARD_DECIDED", function(card)
     end
     if card.status == "decided" and not chimed[card] and playerWon(card) then
         chimed[card] = true
-        if ns.Get("sound") == "chime" then PlaySoundFile(CHIME, "Master") end
+        if ns.Get("sound") == "chime" and not standsDown(card) then PlaySoundFile(CHIME, "Master") end
     end
     if fading() and closingByItself then stayOpen() end
     relayout()
     updateCountdown(true)
     drawHeader()
+    if ns.Popups.Gamepad() and not win:IsShown() and not sweepDue then
+        sweepDue = true
+        ns.After(0, sweep)
+    end
 end)
 
 ns.Listen("CARD_REMOVED", function(card)
@@ -1028,6 +1056,16 @@ local function rollRuleChanged()
 end
 
 ns.Listen("POPUPS_CHANGED", rollRuleChanged)
+
+-- The interface style changed (a frame after the game's event, Core/Popups.lua). Into the gamepad interface,
+-- Blizzard's gamepad roll frame takes every roll still running (it lists them itself): the cards lose their buttons
+-- and the window goes or, closed already, forgets the cards that are over. Back in the mouse interface the cards are
+-- the way to roll again: one that waits on the player brings the rolls back, as turning "Roll in Tutti" on does.
+ns.Listen("GAMEPAD_CHANGED", function(on)
+    rollRuleChanged()
+    if on ~= true then return end
+    if win:IsShown() then UI.Close() else Rolls.ForgetDecided() end
+end)
 
 ns.Listen("SETTING_CHANGED", function(key)
     if key == "scale" then

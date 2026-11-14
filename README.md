@@ -84,8 +84,10 @@ NaowhForever_BiS and Polestar are optional.
 - **Blizzard's roll popups are replaced.** While "Roll in Tutti" is on, Tutti switches them
   off (the way ElvUI does). After a `/reload` in the middle of a roll, Blizzard's popups for
   the rolls still open show up next to Tutti's cards, once.
-- **Gamepad interface.** With the gamepad interface on, Blizzard's own gamepad roll frame
-  still shows next to Tutti's window: Tutti does not hide Blizzard's frames.
+- **Gamepad interface.** With the gamepad interface on, Tutti steps aside and Blizzard's own
+  gamepad roll frame takes the rolls: no roll opens Tutti's window, and switching to the
+  gamepad interface closes it. Switching back in the middle of a roll, Blizzard's popup for
+  that roll may show next to Tutti's card, once.
 - **EllesmereUI is optional.** With the popups hidden, EllesmereUI's loot-roll skin and its
   "Group Loot" mover have nothing to act on, which is harmless.
 - **Polestar.** Its note about a quest item a party member still needs sits under Tutti's

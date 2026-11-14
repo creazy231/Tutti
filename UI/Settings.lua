@@ -4,8 +4,9 @@
 --  the left and its control on the right, centred on each other, a faint line under every row but the last.
 --  Changes apply at once.
 --    WHEN LOOT DROPS   Roll in Tutti (a switch; once Blizzard's popups went off this session and the setting is
---                      off again, "Blizzard's popups return after a reload" and a Reload button), Close after the
---                      last roll (5, 10, 20, 30 seconds or never)
+--                      off again, "Blizzard's popups return after a reload" and a Reload button; in WoW Forever's
+--                      gamepad interface, where Blizzard's gamepad roll frame takes the rolls, a line that says so
+--                      and no button), Close after the last roll (5, 10, 20, 30 seconds or never)
 --    WHEN YOU WIN      Sound (Soft chime, played when it is chosen, or None)
 --    LOOK              Accent (only with EllesmereUI: without it the class colour is the only accent), Size (80 to
 --                      130 % in steps of 5; a dragged knob applies when it is let go, as the window grows under it)
@@ -31,6 +32,7 @@ local CHIME = W.MEDIA .. "Sounds\\chime.ogg"
 -- Words.
 local ROLL_LINE = "Need, Greed and Pass on each card; Blizzard's roll popups stay hidden"
 local RELOAD_LINE, RELOAD = "Blizzard's popups return after a reload", "Reload"
+local GAMEPAD_LINE = "With the Gamepad interface style, the game's own roll window is used" -- NaowhForever's words
 local CLOSE_AFTER = {
     { value = 5, text = "5 seconds" }, { value = 10, text = "10 seconds" }, { value = 20, text = "20 seconds" },
     { value = 30, text = "30 seconds" }, { value = 0, text = "Never" },
@@ -218,8 +220,9 @@ end
 -- Every control from the settings, the reload hint, the rows that are wanted, and the layout.
 local function refresh(view)
     for _, r in ipairs({ view.roll, view.closeAfter, view.sound, view.accent, view.size }) do r.control:Refresh() end
-    local reloadNeeded = ns.Popups.ReloadNeeded() == true
-    view.roll.desc:SetText(reloadNeeded and RELOAD_LINE or ROLL_LINE)
+    local gamepad = ns.Popups.Gamepad() == true
+    local reloadNeeded = not gamepad and ns.Popups.ReloadNeeded() == true
+    view.roll.desc:SetText(gamepad and GAMEPAD_LINE or reloadNeeded and RELOAD_LINE or ROLL_LINE)
     view.roll.reload:SetShown(reloadNeeded)
     view.accent.wanted = hasEllesmereUI()
     layout(view)
@@ -262,7 +265,7 @@ end
 
 ns.UI.RegisterView("settings", build)
 
--- A setting changed (here or elsewhere), or the popups did: the rows say so at once.
+-- A setting changed (here or elsewhere), or the popups or the interface style did: the rows say so at once.
 local function update()
     local view = Settings.view
     if not view then return end
@@ -271,3 +274,4 @@ local function update()
 end
 ns.Listen("SETTING_CHANGED", update)
 ns.Listen("POPUPS_CHANGED", update)
+ns.Listen("GAMEPAD_CHANGED", update)

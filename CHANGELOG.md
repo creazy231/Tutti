@@ -16,6 +16,10 @@ First release.
   can't make is greyed out with the game's reason. Blizzard's roll popups stay hidden while
   "Roll in Tutti" is on; soulbound items still get Blizzard's own confirmation. With it off
   you roll in Blizzard's popups and the cards show the group without buttons.
+- With WoW Forever's gamepad interface on, Tutti steps aside and Blizzard's gamepad roll
+  frame takes the rolls: no roll opens Tutti's window there, and switching to the gamepad
+  interface closes it. Back with mouse and keyboard, a roll still waiting on you brings
+  Tutti back.
 - A card that waits on you stays in sight: the window scrolls it into view whenever the
   cards change, nothing moves under the mouse right after your pick, and nothing folds
   under it while a card waits. In Recent rolls or Settings the count in the header shows the
