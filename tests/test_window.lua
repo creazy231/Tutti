@@ -24,7 +24,17 @@ local BRISE = { "Brisé Tidewater", "Player-1-0003", "SHAMAN" }
 local AYLA = { "Ayla Brightwind", "Player-1-00000001", "DRUID", isSelf = true }
 
 -- A client with the axe in its item cache and the party grouped. -> G, W, ns, TuttiFrame
+-- The addon is loaded up to the window and no further: Task 12's views (UI/Recent.lua and the files after it)
+-- register at load, and these tests put stand-ins in their place.
 local function setup(opts)
+    opts = opts or {}
+    if not opts.only then
+        opts.only = {}
+        for _, file in ipairs(T.tocFiles()) do
+            opts.only[#opts.only + 1] = file
+            if file == "UI/Window.lua" then break end
+        end
+    end
     local G, W, ns = T.load(opts)
     W.items[AXE] = { name = ITEMS[1], quality = 3, ilvl = 33, classID = 2, subclassID = 1,
         equipLoc = "INVTYPE_2HWEAPON", texture = 135348 }
