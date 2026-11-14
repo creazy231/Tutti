@@ -43,8 +43,8 @@ SHOTS = [
         sub="Need, Greed, Pass or still choosing,|right next to every name.")),
     ("03-winner", "winner", dict(
         bg="bg-camp.jpg", layout="left", scale="2.05", eyebrow="The roll",
-        title="Every number.|One *winner*.",
-        sub="The numbers spin in,|the winner gets a crown.")),
+        title="Every pick.|One *winner*.",
+        sub="The winner gets a crown,|the others fade back.")),
     ("04-you-won", "glow", dict(
         bg="bg-vault.jpg", layout="right", scale="2.45", eyebrow="Your loot",
         title="When you win,|it *glows*.",

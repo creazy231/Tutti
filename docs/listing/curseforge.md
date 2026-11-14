@@ -23,7 +23,7 @@ Everything to paste into the CurseForge project form (authors.curseforge.com).
 
 1. `screenshots/01-every-roll.png`: Every roll, in one window: each item gets a card, with your whole group under it.
 2. `screenshots/02-picks.png`: Who picked what, at a glance: Need, Greed, Pass or still choosing, right next to every name.
-3. `screenshots/03-winner.png`: Every number, one winner: the numbers spin in, the winner gets a crown.
+3. `screenshots/03-winner.png`: Every pick, one winner: the winner gets a crown, the others fade back.
 4. `screenshots/04-you-won.png`: When you win, it glows: a light sweeps the card and a soft chime plays.
 5. `screenshots/05-recent.png`: The whole run, one click away: every result of the session, with everyone's picks.
 6. `screenshots/06-settings.png`: Looks like your UI: EllesmereUI's colours and font, or your class colour.
