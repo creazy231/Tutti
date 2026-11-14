@@ -327,3 +327,47 @@ T.it("an earlier day has a label of its own", function()
     T.eq(text(W, view.sections[1].label), "STONEWATCH KEEP · TODAY")
     T.eq(text(W, view.sections[2].label), "STONEWATCH KEEP · YESTERDAY", "the same place, another day")
 end)
+
+-- R44: the mockup builds the open line's rows as a decided card's (`.rn.lo`), without the card's fade.
+T.it("an open line's loser shows its number muted, and is not faded back (R44)", function()
+    local G, W, ns, win = setup()
+    session(G, ns)
+    local view = open(W, ns)
+    view.lines[1]:Click()
+    local brise, orlen, corvel, ayla = view.picks.rows[2], view.picks.rows[1], view.picks.rows[3], view.picks.rows[5]
+    T.eq(text(W, brise.roll), "52")
+    same(color(brise.roll), { ns.Theme.Color("muted") }, "a loser's number is muted")
+    T.eq(select(2, brise.roll:GetFont()), 13, "regular 13, as the card's own")
+    T.eq(brise:GetAlpha(), 1, "and the row is not faded back")
+    T.eq(orlen:GetAlpha(), 1)
+    T.eq(corvel:GetAlpha(), 0.55, "a pass dimmed, as the mockup's .pr.pass")
+    T.eq(ayla:GetAlpha(), 1)
+    same(color(ayla.roll), { ns.Theme.Accent() }, "the winner's number in the accent")
+end)
+
+T.it("a damaged result neither stops the list nor its ticking", function()
+    local G, W, ns, win = setup()
+    local errors = {}
+    G.geterrorhandler = function() return function(err) errors[#errors + 1] = err end end
+    session(G, ns)
+    -- What a damaged saved list may hold: a time the clock cannot read, fields of the wrong kind.
+    add(ns, { name = "Ponderous Orb", at = 1e300, place = {}, quality = "rare", icon = {},
+        winner = { name = 5, class = {}, state = {}, roll = "x" }, rows = { "x", { name = {}, class = 7, state = {},
+        roll = {}, isWinner = "yes", isPlayer = 1 } } })
+    add(ns, { name = "Violet Sorcerer's Robes", at = 0 / 0, allPassed = true })
+    local view = open(W, ns)
+    T.eq(#errors, 0, "nothing raised")
+    local lines = shownLines(view)
+    T.eq(#lines, 5, "every result has its line")
+    T.eq(text(W, lines[1].name), "Violet Sorcerer's Robes")
+    T.eq(text(W, lines[1].age), "", "no age for a time that cannot be read")
+    T.eq(text(W, lines[2].name), "Ponderous Orb")
+    T.eq(text(W, lines[2].age), "")
+    T.eq(text(W, view.sections[1].label), "UNKNOWN · TODAY", "the place it could not read")
+    lines[2]:Click()
+    T.eq(#errors, 0, "its picks open without raising")
+    T.ok(view.picks:IsShown())
+    W.advance(11)
+    T.eq(#errors, 0, "and the ages tick on")
+    T.eq(text(W, shownLines(view)[3].name), "Cartilage Shapers", "the good results are all there")
+end)

@@ -900,3 +900,21 @@ T.it("a demo card's news: picks, numbers and the decision, as the history would 
     real.members = { { guid = "Demo-1", first = "Orlen", class = "PALADIN" } }
     T.eq(ns.Rolls.Rows(real)[1].isPlayer, true, "and keeps the group's rows")
 end)
+
+T.it("no roll event of the game reaches a demo card: CANCEL_ALL_LOOT_ROLLS, nor a drop of the same item", function()
+    local G, W, ns = T.load()
+    local link = W.itemLink(AXE, "Guardian's Dualblade", 3)
+    local demo = ns.Rolls.AddDemo({ link = link, itemID = AXE, name = "Guardian's Dualblade", quality = 3,
+        canNeed = true, canGreed = true, startedAt = G.GetTime(), duration = 60 })
+    local real = newCard(W, ns, 7)
+    W.fire("CANCEL_ALL_LOOT_ROLLS")
+    T.ok(real.over, "the player's part of the real roll is over")
+    T.eq(demo.over, false, "the demo card's is not")
+    T.ok(ns.Rolls.AwaitsMe(demo), "its buttons stay")
+    -- The history's drop of the same item: the demo card is older and would come first, but it is no roll of the game.
+    W.setDrop(9, 1, { lootListKey = 1, itemHyperlink = link,
+        playerRollState = G.Enum.EncounterLootDropRollState.NoRoll, isTied = false, allPassed = false,
+        rollInfos = {}, startTime = G.C_LootHistory.GetLootHistoryTime(), duration = 60000 })
+    T.eq(demo.dropKey, nil, "the drop never joins the demo card")
+    T.eq(real.dropKey, "9:1", "it goes to the real roll")
+end)
