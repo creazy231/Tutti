@@ -2,6 +2,7 @@
 ## Title: Tutti
 ## Notes: Every group loot roll in one window: who picked Need, Greed or Pass, the rolls and the winner.
 ## Author: creazy231
+## X-Curse-Project-ID: 1805550
 ## Version: @project-version@
 ## Category: Loot
 ## OptionalDeps: EllesmereUI, NaowhForever_BiS

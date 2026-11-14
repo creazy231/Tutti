@@ -68,7 +68,8 @@ Author for anything public: creazy231.
   README). `docs/mockup/` holds a private game screenshot and EllesmereUI's licensed font: it
   is git-ignored and never committed.
 - Git: repo-local identity creazy231 / 13473174+creazy231@users.noreply.github.com. The GitHub
-  repo and the CurseForge project are created only when the user asks. Releases: a version tag
-  runs `.github/workflows/release.yml` (BigWigs packager); see `docs/RELEASING.md`.
+  repo is public; the CurseForge project is 1805550 (`## X-Curse-Project-ID` in the TOC, the
+  token in the secret `CF_API_KEY`), both the user's. Releases: a version tag, only on the user's
+  word, runs `.github/workflows/release.yml` (BigWigs packager); see `docs/RELEASING.md`.
 - After a user-visible change: add a `CHANGELOG.md` entry under the next version.
   `## Version: @project-version@` in `Tutti.toc` is filled in by the packager from the tag.

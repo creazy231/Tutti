@@ -5,14 +5,17 @@ which runs the offline checks (the test suite, the syntax check and the media ch
 packages the addon with the BigWigs packager and uploads it. Only the addon files go into
 the package: `.pkgmeta` leaves out `docs/`, `tests/`, `tools/`, `README.md` and `CLAUDE.md`,
 and the packager skips every dot-folder (`.github`, `.git`, ...) by itself. A GitHub release
-with the zip is always created; CurseForge gets the file once its project id and token are
-set up (below).
+with the zip is always created, and CurseForge project 1805550 gets the file too (its id and
+token were set up once, below).
 
 `Tutti.toc` names every client in one line, `## Interface: 120105, 120107, 50504, 40402, 38002,
 30405, 20506, 16001, 11509` (Retail, the Classic clients, WoW Forever), so the packager tags
 every upload with all of those game versions and names the zip `Tutti-<tag>.zip`.
 
 ## One-time setup
+
+Steps 1 to 3 are done (2026-11-14): CurseForge project 1805550, its id in `Tutti.toc`, the
+token in the secret `CF_API_KEY`. They stay here for a new token or another site.
 
 ### 1. Create the CurseForge project (in the browser, your account)
 
@@ -25,12 +28,11 @@ every upload with all of those game versions and names the zip `Tutti-<tag>.zip`
 
 ### 2. Put the project id into the TOC
 
-Add this line to `Tutti.toc` (under `## Author`) and push it to `main` before you tag the
-first version. The release is built from the tagged commit, and without the id the upload
-to CurseForge is skipped.
+`Tutti.toc` has this line, under `## Author`, and `tests/test_load.lua` checks it. The release
+is built from the tagged commit, and without the id the upload to CurseForge is skipped.
 
 ```
-## X-Curse-Project-ID: 123456
+## X-Curse-Project-ID: 1805550
 ```
 
 ### 3. Give GitHub an upload token

@@ -47,6 +47,12 @@ T.it("the TOC names every client, Author creazy231, SavedVariables TuttiDB", fun
     T.eq(t.IconTexture, "Interface\\AddOns\\Tutti\\Media\\mark", "IconTexture")
 end)
 
+-- A version tag uploads to the CurseForge project this line names (docs/RELEASING.md); without it the packager skips
+-- the upload.
+T.it("the TOC names Tutti's CurseForge project", function()
+    T.eq(toc()["X-Curse-Project-ID"], "1805550", "X-Curse-Project-ID")
+end)
+
 T.it("the TOC names the addon compartment functions", function()
     local G = T.load()
     local t = toc()
