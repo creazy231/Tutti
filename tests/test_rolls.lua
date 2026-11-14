@@ -820,3 +820,83 @@ T.it("ForgetDecided removes decided and ended cards and keeps the live ones", fu
     ns.Rolls.ForgetDecided()
     T.eq(#removed, 2, "nothing more to forget")
 end)
+
+-------------------------------------------------------------------------------
+--  Demo cards (/tutti demo)
+-------------------------------------------------------------------------------
+local PLAYER_GUID = "Player-1-00000001" -- the fake's player
+
+T.it("a demo card: Tutti's own id, a roll ID below 0, announced, and its pick never rolls", function()
+    local G, W, ns = T.load()
+    local real = newCard(W, ns, 1)
+    local added = listen(ns, "CARD_ADDED")
+    local card = ns.Rolls.AddDemo({ name = "Guardian's Dualblade", quality = 3, canNeed = false, canGreed = true,
+        startedAt = G.GetTime(), duration = 60 })
+    T.eq(card.id, real.id + 1, "the next id of Tutti's own count")
+    T.eq(card.demo, true)
+    T.ok(card.rollID < 0, "a roll ID no roll of the game has")
+    T.eq(card.status, "live")
+    T.eq(#added, 1, "announced as a roll is")
+    T.eq(added[1].card, card)
+    T.eq(ns.Rolls.Get(card.id), card)
+    T.ok(ns.Rolls.AwaitsMe(card), "it shows the buttons")
+    W.fire("CANCEL_LOOT_ROLL", 1)
+    T.ok(real.over and not card.over, "the game's events reach its own rolls only")
+    W.addRoll(-card.rollID, axeSpec(W))
+    T.eq(#ns.Rolls.Cards(), 3, "a roll of the game with the card's number still gets its own card")
+    T.eq(ns.Rolls.Pick(card, "greed"), true)
+    T.eq(#W.rolled, 0, "the game never hears of its pick")
+    W.advance(65.1)
+    T.eq(card.status, "ended", "nobody decided it: it ends as a roll does")
+end)
+
+T.it("a demo card's news: picks, numbers and the decision, as the history would bring them", function()
+    local G, W, ns = T.load()
+    local card = ns.Rolls.AddDemo({
+        name = "Cartilage Shapers", startedAt = G.GetTime(), duration = 60, history = true,
+        members = {
+            { guid = "Demo-1", first = "Orlen", class = "PALADIN" },
+            { guid = PLAYER_GUID, first = "Ayla", class = "DRUID", isPlayer = true },
+        },
+        picks = {
+            ["Demo-1"] = { state = "wait", name = "Orlen Brightmoor", class = "PALADIN", order = 1 },
+            [PLAYER_GUID] = { state = "wait", name = "Ayla Brightwind", class = "DRUID", isSelf = true, order = 2 },
+        },
+    })
+    local rows = ns.Rolls.Rows(card)
+    T.eq(#rows, 2, "its own group: the made-up member and the player")
+    T.eq(rows[1].name, "Orlen")
+    T.eq(rows[1].class, "PALADIN")
+    T.eq(rows[2].isPlayer, true, "in the order it brings")
+    local changed, decided = listen(ns, "CARD_CHANGED"), listen(ns, "CARD_DECIDED")
+    ns.Rolls.DemoNews(card, { ["Demo-1"] = { state = "need" } })
+    T.eq(#changed, 1)
+    T.eq(changed[1].changes.picks["Demo-1"], "state", "a new pick")
+    T.eq(ns.Rolls.Rows(card)[1].state, "need")
+    ns.Rolls.DemoNews(card, { ["Demo-1"] = { roll = 19 } })
+    T.eq(changed[2].changes.picks["Demo-1"], "roll", "a number")
+    T.eq(ns.Rolls.Rows(card)[1].roll, 19)
+    ns.Rolls.DemoNews(card, { ["Demo-1"] = { roll = 19 } })
+    T.eq(#changed, 2, "nothing new, nothing said")
+    ns.Rolls.DemoNews(card, nil, "Demo-1")
+    T.eq(card.status, "decided")
+    T.eq(card.winner, "Demo-1")
+    T.eq(#decided, 1)
+    T.eq(changed[3].changes.decided, true)
+    T.eq(ns.Rolls.Rows(card)[1].isWinner, true)
+    ns.Rolls.DemoNews(card, nil, PLAYER_GUID)
+    T.eq(card.winner, "Demo-1", "decided once")
+    T.eq(#decided, 1)
+
+    local passed = ns.Rolls.AddDemo({ name = "x", startedAt = G.GetTime(), duration = 60 })
+    ns.Rolls.DemoNews(passed, nil, false)
+    T.eq(passed.status, "decided")
+    T.eq(passed.allPassed, true, "false: everyone passed")
+
+    local real = newCard(W, ns, 5)
+    ns.Rolls.DemoNews(real, { [PLAYER_GUID] = { state = "need" } }, PLAYER_GUID)
+    T.eq(real.status, "live", "a real card takes no news from the demo")
+    T.eq(next(real.picks), nil)
+    real.members = { { guid = "Demo-1", first = "Orlen", class = "PALADIN" } }
+    T.eq(ns.Rolls.Rows(real)[1].isPlayer, true, "and keeps the group's rows")
+end)

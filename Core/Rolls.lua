@@ -20,11 +20,20 @@
 --                                  "wait" if the history lists them or the game gave them a roll, else
 --                                  "out" once the card has the history.
 --    ns.Rolls.Forget(card), ns.Rolls.ForgetDecided()
+--    ns.Rolls.AddDemo(fields) -> card  a made-up card for /tutti demo (UI/Demo.lua): `fields` on a new card of
+--                                  Tutti's own count, marked demo, with a roll ID below 0 that no roll of the game
+--                                  has (it shows the buttons, and no event of the game reaches it); announced as a
+--                                  roll is, and ended as one is if nobody decides it. Pick never sends its pick to
+--                                  the game. It may bring `members`, a group of its own ({ guid, first, class,
+--                                  isPlayer } in order) that its rows follow instead of the player's group
+--    ns.Rolls.DemoNews(card, picks, winner)  a demo card's group side, as the loot history would bring it: `picks`
+--                                  ([guid] = { state, roll }) on the picks it has, the new or changed ones announced
+--                                  as the history's are; `winner` decides it: a GUID, or false when everyone passed
 --  A card: id, rollID|nil, link, itemID, name, icon, quality, count, bop, label|nil, ilvl|nil,
 --  canNeed, canGreed, canTransmog, reasonNeed|nil (text), startedAt (GetTime), duration (s),
 --  mine|nil, pending|nil, over, history, tied, picks, status ("live"|"decided"|"ended"),
---  winner|nil (a GUID), allPassed, decidedAt|nil, demo|nil, and once the history has the drop:
---  encounterID, lootListKey, dropKey ("<encounterID>:<lootListKey>").
+--  winner|nil (a GUID), allPassed, decidedAt|nil, demo|nil, members|nil (a demo card's own group), and once
+--  the history has the drop: encounterID, lootListKey, dropKey ("<encounterID>:<lootListKey>").
 --  picks: [guid] = { state, roll|nil, name, class, isSelf, order } as the history lists them.
 --  A bind confirmation: Need or Greed on a soulbound item first makes the game ask the player to
 --  confirm (CONFIRM_LOOT_ROLL, Blizzard's own dialog; Tutti leaves it alone and never confirms).
@@ -555,7 +564,8 @@ end
 -- (someone who left, or whom the group list could not name), from the history, in its order. A
 -- member's row is their pick in the history. Until the card has the history everyone is still
 -- choosing; once it has, a member it does not list is out. The player's row is `playerState`.
--- Once the card is decided or ended nobody is choosing: a row still at "wait" is out.
+-- Once the card is decided or ended nobody is choosing: a row still at "wait" is out. A demo card that brings a
+-- group of its own (`members`) has its rows in that group's order.
 function Rolls.Rows(card)
     card = type(card) == "table" and card or {}
     local picks = type(card.picks) == "table" and card.picks or {}
@@ -564,8 +574,9 @@ function Rolls.Rows(card)
         if over and state == "wait" then return "out" end
         return state
     end
+    local members = (card.demo == true and type(card.members) == "table") and card.members or ns.Group.Members()
     local rows, listed = {}, {}
-    for _, member in ipairs(ns.Group.Members()) do
+    for _, member in ipairs(members) do
         local pick = picks[member.guid]
         local state
         if member.isPlayer then
@@ -617,6 +628,39 @@ function Rolls.ForgetDecided()
     for _, card in ipairs(Rolls.Cards()) do
         if card.status ~= "live" then Rolls.Forget(card) end
     end
+end
+
+-------------------------------------------------------------------------------
+--  Demo cards (/tutti demo): cards like any other, whose group side is the demo's to tell
+-------------------------------------------------------------------------------
+function Rolls.AddDemo(fields)
+    local card = newCard(type(fields) == "table" and fields or {})
+    card.demo, card.rollID = true, -card.id
+    ns.Fire("CARD_ADDED", card)
+    watch(card)
+    return card
+end
+
+function Rolls.DemoNews(card, picks, winner)
+    if type(card) ~= "table" or card.demo ~= true or byID[card.id] ~= card then return end
+    local changes = {}
+    for guid, news in pairs(type(picks) == "table" and picks or {}) do
+        local pick = card.picks[guid]
+        if pick and type(news) == "table" then
+            local state, roll = news.state or pick.state, news.roll or pick.roll
+            local mark = (state ~= pick.state and "state") or (roll ~= pick.roll and "roll") or nil
+            pick.state, pick.roll = state, roll
+            if mark then
+                changes.picks = changes.picks or {}
+                changes.picks[guid] = mark
+            end
+        end
+    end
+    if winner ~= nil and card.status ~= "decided" then
+        decide(card, winner or nil, winner == false)
+        changes.decided = true
+    end
+    if next(changes) then changed(card, changes) end
 end
 
 -------------------------------------------------------------------------------
