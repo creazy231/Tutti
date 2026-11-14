@@ -1,0 +1,27 @@
+# Runs Tutti's offline checks on every push to main and on every pull request:
+# the test suite (a fake WoW Forever client in LuaJIT), the syntax check, and the
+# media check (the generated textures and the chime; it needs Pillow). The same
+# three run again before every release (release.yml).
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LuaJIT and Pillow
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y luajit python3-pil
+
+      - name: Run the suite
+        run: |
+          luajit tests/run.lua
+          luajit tests/syntax.lua
+          python3 -I tests/test_media.py

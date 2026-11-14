@@ -163,3 +163,84 @@ Ruling: "Your pick" ends 3.5 px before "· 54s", Expressway's space at 11 px (31
 Ruling: the render's "youwon" scene has "Close after the last roll" on Never: the mockup's still is the moment before its countdown begins (its PLAY starts it 2.7 s after the win, after the fold), while the window counts down from the decision (R104); the scene shows the mockup's state that way and "closing" shows the countdown. The addon is unchanged — cost if wrong: none.
 Ruling: kept as they are, each measured: the mockup's 13.3 px lines (9.5 and 10.5 px text at 1.4 in `.sec`, `.sh`, `.hint`) stay whole pixels (23, 22, 13, 28 and 29), 0.3 px a label (Settings' rows drift 1 to 2.5 px over the view in the render, with the fake's line pitch); "DONE", the place labels, the settings headings and YOU have no letter spacing (the client has none); a dropdown is as wide as its widest choice ("20 seconds", 56.2 px, 3.5 px wider than the mockup's box round "10 seconds"), so it keeps its width when the choice changes (Sotto's); the size slider's knob sits at 40 % for 100 % of 80 to 130 (the mockup draws 50 %); the folded line's arrow is the turned down glyph (R89); the close button hides while a card waits on the player (the design, not in the mockup); a refused Need shows the game's reason (the mockup's "your class can't use this" is a stand-in); the glyphs are the media's (R7); card 2's title in the mockup sits half a pixel higher over its icon than card 1's (Chrome's text snapping in the mockup). — cost if wrong: none.
 Ruling (for the controller): a faded row's class icon (a pass at 55 %, a loser at 42 %, in a card or in Recent rolls) is about 6 levels darker than the mockup's (#4d2913 against #532e19): the client fades each region on its own where CSS fades the row as one layer, and the row's 1 px black rim (`row.rim` in `NewRow`) is a square under the whole icon, which shows through the faded icon. Four lines outside the icon (as `W.Outline` draws them) would match; `NewRow` belongs to the Task 12 fix round in flight, so it is left for the controller to merge after it. Recent rolls' muted loser numbers are that round's too (R44) — cost if wrong: 6 levels on faded icons.
+Task 13 done: the render tool and the visual check against the mockup (eight scenes and the EllesmereUI accent, headless Chrome at 2x: mockup, render and difference side by side, kept in the scratchpad), the fixes above in `UI/Card.lua`, `UI/Window.lua`, `UI/Widgets.lua`, `Core/Theme.lua`, `tools/make_media.py` and three new textures, tests for each (`tests/test_card.lua`, `test_window.lua`, `test_widgets.lua`, `test_theme.lua`, `test_media.py`), the release workflows, `docs/RELEASING.md`, README, CHANGELOG, CLAUDE.md, `docs/design.md` (the gamepad gap, R23; the shadows) and the in-game checklist below (`luajit tests/run.lua` → 393 passed, 0 failed; `luajit tests/syntax.lua` → syntax ok; `python3 -I tests/test_media.py` → media ok (24 textures, 24 names in the code)).
+
+## In-game checklist
+
+For the user, in WoW Forever. Each line is one thing to try and what should happen. Start with the first group;
+Lua errors show with BugSack, taint in `Logs/taint.log`.
+
+**Before you start**
+- `/console taintLog 1`, then `/reload`. At the end, `Logs/taint.log` has no line that names Tutti, after rolls in and
+  out of combat (design risk 7).
+- `/tutti demo` on your own: the window rises at its place with the drop shadow under it; Orlen, Brisé, Corvel and
+  Kestrel pick one by one; the dots pulse; Greed and Need go down and are clicked on the cards; the numbers spin in
+  and land with a small bump; Orlen's row washes in the accent and his crown pops; when you win, the icon glows
+  twice, a light sweeps across the card (and stays inside it) and the soft chime plays; the axe folds under DONE with
+  its arrow pointing right; "closes in 10s" runs down with the line under the header; the window fades out.
+- `/tutti demo` in a group: your group's names play the parts; in a raid everyone past the first four passes.
+- During the demo, hover each item's icon and name: the item's tooltip (Guardian's Dualblade, Cartilage Shapers),
+  never an empty one; both have their real icons; the gloves carry the BiS badge if NaowhForever ranks them for you.
+- While "closes in" runs, put the mouse over the window: "kept open" and the line full; move away: it goes on.
+
+**Looks**
+- Hairlines are one pixel at 80, 100 and 130 % (Settings → Size) and at your UI scale: the card lines, the icon
+  edges, the header line (a little brighter than the card lines, as in the mockup).
+- Text: the title, item names and player names have a thin shadow straight under them; the grey text has none.
+- A long label next to the BiS badge and "Your pick · 54s" ("Held In Off-hand" on an off-hand item): the label is cut
+  with "…" 4 px before "Your pick", nothing overlaps. A long player name is cut before the pick column. A long item
+  name in Recent rolls is cut before its age.
+- Settings: the first row's line under "Roll in Tutti" wraps to two lines 13 px apart (the row about 55 px high).
+- The Transmog hanger glyph and the "Transmog" button read well (an item the game offers Transmog for).
+
+**Real rolls (a dungeon with group loot)**
+- With "Roll in Tutti" on, Blizzard's roll popups do not show; Tutti's window opens on every roll, the cards in drop
+  order, the rows in party-frame order.
+- How soon the picks fill in after the roll starts, and that they all come (design risk 1); members who cannot roll
+  show "not in this roll" (design risk 2); everyone's numbers and the winner arrive, also on a roll decided after its
+  time ran out (R21).
+- A card the history made before your roll started gets its buttons when your roll arrives, and counts down a
+  plausible time (the history's time units, Task 5).
+- Two copies of one item in one drop: each card gets its own picks and winner (design risk 3).
+- Trash rolls during combat: no Lua error, nothing missing (design risk 4).
+- An item your class cannot Need: Need greyed out with the game's reason under the buttons.
+- A soulbound item: Need or Greed brings Blizzard's "bind to you" confirmation (design risk 5). Cancel it: the
+  buttons are back on the card. Accept it: the pick shows in your row. Let a roll run out with the dialog open: the
+  dialog stays until clicked (R17), and your row shows what the game says.
+- A roll you are not part of (out of range): a card without buttons. A member who is dead or away: "not in this
+  roll". Free-for-all, master loot or personal loot: nothing opens.
+- The close button is hidden while a card waits on you; `/tutti` then shows the rolls instead of closing them.
+
+**Reload and raids**
+- `/reload` in the middle of a roll (design risk 6): Tutti's card comes back with its buttons; Blizzard's popups for
+  the open rolls show once next to it (the known gap).
+- `/reload` in a raid: no member shows as "Unknown" (Task 3).
+- A raid roll: rows for Need, Greed and Transmog, the winner and you, then "13 passed · 2 choosing"; click it for the
+  list.
+- A long raid list: the window stops at about 70 % of the screen and scrolls with the wheel; the thumb shows; a new
+  card that waits on you is scrolled into sight unless you used the wheel.
+- The loot history cleared by the game while a roll runs (a new instance): no second card for the same roll.
+
+**The window**
+- Drag it by the header, `/reload`: it opens at the same place, also at 80 and 130 %; dragged near the bottom edge,
+  it stays on screen.
+- Hover a roll button: its edge lights in the pick's colour; press it: it shrinks a little; a button that hides under
+  the mouse (a pick) leaves no hover behind.
+- The size slider: drag the knob and let go (also outside the slider): the size changes once, on letting go.
+
+**Settings and the ways in**
+- Roll in Tutti off: the row says "Blizzard's popups return after a reload" and shows Reload; the button reloads the
+  UI; after it Blizzard's popups are back. On again: Tutti hides them at once.
+- Sound → Soft chime plays it once; Close after the last roll → Never keeps the window open.
+- The addon compartment: Tutti's entry opens and closes Recent rolls; its tooltip ("Tutti", "Click: recent rolls")
+  shows left of the menu. `/tutti` toggles Recent rolls, `/tutti settings` opens Settings.
+- Recent rolls: a zone with accented letters keeps them small in the capital label; the date of an earlier day reads
+  "12 Nov"; the ages move on ("now", "1m", ...).
+
+**Other addons**
+- EllesmereUI: Settings → Accent → EllesmereUI follows its accent; change EllesmereUI's font or accent with Tutti
+  open: everything repaints at once, Settings rewraps.
+- NaowhForever_BiS: the badge on an item it ranks for you, in its rank colour.
+- Polestar: its note about a party member's quest item hangs under Tutti's window while both show, and goes back
+  when the window closes.
+- The gamepad interface on: Blizzard's own gamepad roll frame still shows next to Tutti's window (the known gap, R23).

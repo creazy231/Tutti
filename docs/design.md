@@ -183,7 +183,7 @@ The tokens are the Sotto / Polestar "EllesmereUI" scheme, read live from Ellesme
 
 - **Window:**
   - EllesmereUI's panel colour (#141414 at 93 %);
-  - a 1 px white-10 % hairline inside, a 1 px black edge outside, and a soft drop shadow;
+  - a 1 px white-10 % hairline inside, a 1 px black edge outside, and the mockup's drop shadow (10 px down, 28 px blur, black at 55 %);
   - 300 px wide.
 - **Header:**
   - 32 px high, with the panel's light top gradient and a hairline under it;
@@ -207,7 +207,7 @@ The tokens are the Sotto / Polestar "EllesmereUI" scheme, read live from Ellesme
   - hairlines in white at 6 % and 10 %;
   - quality colours for text are the quality colour brightened in OKLab lightness (hue and chroma kept) until it reads at 5.5:1 on the window background. That gives rare #2f8dfc, the mockup's #2b8cff to within a few steps, and epic #c35cff. The icon edge keeps the original (rare #0070dd);
   - accent: class colour (druid #ff7d0a) or EllesmereUI's (#00cfff).
-- **Font:** EllesmereUI's font (Expressway; bold names use "Expressway Bold" next to it), no outline, 1 px shadow. Without EllesmereUI: the game font.
+- **Font:** EllesmereUI's font (Expressway; bold names use "Expressway Bold" next to it), no outline. The title, item names and player names have a 1 px shadow straight under them (the mockup's `.ts`); other text has none. Without EllesmereUI: the game font.
 - **Animations:**
   - number spin about 0.75 s, then a small landing bump;
   - winner wash sweep 0.7 s;
@@ -252,6 +252,7 @@ A roll (rollID) and a drop (encounterID, lootListKey) share the item link. A dro
   - Guard: if `GameEvent` or the function is missing, Blizzard's popups stay and Tutti still works next to them.
 - Never re-register Blizzard's handler from addon code: it would then run tainted. Bringing the popups back takes a reload.
 - **Known gap:** after a `/reload` in the middle of a roll, Blizzard's `PLAYER_ENTERING_WORLD` handler calls `GroupLootContainer_RefreshRolls()` and shows popups for the rolls still open, next to Tutti's cards. Accept that rare case. Do not hide Blizzard's frames from addon code.
+- **Known gap (gamepad, R23):** with the gamepad interface on, the router's `HandleStartLootRoll` returns early (`InputUtil.IsGamepadUIEnabled()`), and Blizzard's own `GamepadGroupLootRollFrame` registers `START_LOOT_ROLL` on itself (`InitializeGamepad` in `Blizzard_UIPanels_Game/Mainline/GroupLootFrame.lua`). `UnregisterInternalEvent` does not reach that, so its gamepad roll frame still shows next to Tutti's window. Accepted, with no code: Tutti hides no Blizzard frame.
 - With the popups hidden, EllesmereUI's loot-roll reskin and its "Group Loot" mover have nothing to act on. That is harmless.
 
 ### Integrations
