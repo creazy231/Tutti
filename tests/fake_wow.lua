@@ -885,8 +885,9 @@ function F.new(opts)
     end
 
     -- Group loot rolls for the player. W.rolls holds them by roll ID, W.activeRolls is what
-    -- GetActiveLootRollIDs() lists (the rolls the player has not chosen on; a test sets it as the
-    -- game would after a /reload), W.rolled records every RollOnLoot call as { rollID, type }.
+    -- GetActiveLootRollIDs() lists (the rolls the player has not chosen on: W.addRoll adds a roll,
+    -- RollOnLoot takes it off, and a test may set it as the game would after a /reload), W.rolled
+    -- records every RollOnLoot call as { rollID, type }.
     W.rolls, W.activeRolls, W.rolled = {}, {}, {}
     local function default(value, fallback)
         if value == nil then return fallback end
@@ -933,7 +934,13 @@ function F.new(opts)
         for i, id in ipairs(W.activeRolls) do out[i] = id end
         return out
     end
-    G.RollOnLoot = function(rollID, rollType) W.rolled[#W.rolled + 1] = { rollID, rollType } end
+    -- The game lists only the rolls the player has not chosen on: a pick takes its roll off GetActiveLootRollIDs.
+    G.RollOnLoot = function(rollID, rollType)
+        W.rolled[#W.rolled + 1] = { rollID, rollType }
+        for i = #W.activeRolls, 1, -1 do
+            if W.activeRolls[i] == rollID then table.remove(W.activeRolls, i) end
+        end
+    end
 
     ---------------------------------------------------------------------------
     --  The loot history: what the group did with each drop

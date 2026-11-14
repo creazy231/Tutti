@@ -653,6 +653,23 @@ T.it("a reload during a roll rebuilds the cards", function()
     T.eq(#added, 1)
 end)
 
+T.it("a roll the player has picked on is not rebuilt after a reload; the others are", function()
+    local G, W, ns = T.load()
+    W.addRoll(7, axeSpec(W))
+    W.addRoll(8, axeSpec(W, { link = W.itemLink(AXE + 1, "Other axe") }))
+    T.eq(ns.Rolls.Pick(ns.Rolls.Cards()[1], "greed"), true)
+    T.eq(#W.activeRolls, 1, "the game no longer lists a roll the player chose on")
+    T.eq(W.activeRolls[1], 8)
+    -- The /reload: Tutti starts afresh, the game still has both rolls but lists only the open one.
+    local G2, W2, ns2 = T.load({ setup = function(G2, W2)
+        W2.rolls, W2.activeRolls = W.rolls, W.activeRolls
+    end })
+    local cards = ns2.Rolls.Cards()
+    T.eq(#cards, 1, "one card after the reload")
+    T.eq(cards[1].rollID, 8, "the open roll's")
+    T.ok(ns2.Rolls.AwaitsMe(cards[1]))
+end)
+
 T.it("a rebuilt card takes its time from the game, else a minute", function()
     local G, W, ns = T.load()
     W.addRoll(7, axeSpec(W, { time = 30000 }), { silent = true })
