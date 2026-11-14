@@ -22,10 +22,12 @@
 --    ns.Rolls.Forget(card), ns.Rolls.ForgetDecided()
 --    ns.Rolls.AddDemo(fields) -> card  a made-up card for /tutti demo (UI/Demo.lua): `fields` on a new card of
 --                                  Tutti's own count, marked demo, with a roll ID below 0 that no roll of the game
---                                  has (it shows the buttons, and no event of the game reaches it); announced as a
---                                  roll is, and ended as one is if nobody decides it. Pick never sends its pick to
---                                  the game. It may bring `members`, a group of its own ({ guid, first, class,
---                                  isPlayer } in order) that its rows follow instead of the player's group
+--                                  has (it shows the buttons); no roll or loot-history event of the game reaches it,
+--                                  only the item's info does, as for a card the history made (its name, icon,
+--                                  quality and link, where the demo's own words stood in). Announced as a roll is,
+--                                  and ended as one is if nobody decides it. Pick never sends its pick to the game.
+--                                  It may bring `members`, a group of its own ({ guid, first, class, isPlayer } in
+--                                  order) that its rows follow instead of the player's group
 --    ns.Rolls.DemoNews(card, picks, winner)  a demo card's group side, as the loot history would bring it: `picks`
 --                                  ([guid] = { state, roll }) on the picks it has, the new or changed ones announced
 --                                  as the history's are; `winner` decides it: a GUID, or false when everyone passed
@@ -167,17 +169,18 @@ local function stateOf(value)
     return value and STATE_OF[value] or nil
 end
 
--- What the client knows of the item a link names: its name, icon and quality. An item that is not
--- in the client's cache still has its name in the link and, as Forever writes a link, its quality in
--- the colour; the rest follows with GET_ITEM_INFO_RECEIVED. Any of the three may be nil.
+-- What the client knows of the item a link names: its name, icon and quality, and its own link. An item
+-- that is not in the client's cache still has its name in the link and, as Forever writes a link, its
+-- quality in the colour; the rest follows with GET_ITEM_INFO_RECEIVED. Any of the four may be nil.
 local function itemFacts(link)
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    local name, icon, quality
+    local name, icon, quality, full
     if type(get) == "function" then
-        local n, _, q, _, _, _, _, _, _, texture = get(link)
+        local n, l, q, _, _, _, _, _, _, texture = get(link)
         name, quality, icon = text(n), clear(q, "number"), clear(texture, "number") or text(texture)
+        full = text(l)
     end
-    return name or text(link:match("|h%[(.-)%]|h")), icon, quality or tonumber(link:match("^|cnIQ(%d)"))
+    return name or text(link:match("|h%[(.-)%]|h")), icon, quality or tonumber(link:match("^|cnIQ(%d)")), full
 end
 
 -------------------------------------------------------------------------------
@@ -318,16 +321,20 @@ end
 
 -- The item info of a card, asked again: it may have reached the client's cache since. A card the
 -- loot history made has no roll to name its item, so it takes its name, icon and quality from the
--- item as well, and keeps what it had where the client still says nothing.
+-- item as well, and keeps what it had where the client still says nothing. So does a demo card, whose
+-- own words stand in until the client has the item, and it takes the client's link for its own.
 local function refreshItem(card)
     local label, ilvl = ns.Items.Describe(card.link)
+    if card.demo then label, ilvl = label or card.label, ilvl or card.ilvl end
     local different = label ~= card.label or ilvl ~= card.ilvl
     card.label, card.ilvl = label, ilvl
-    if not card.rollID and card.link then
-        local name, icon, quality = itemFacts(card.link)
+    if (not card.rollID or card.demo) and card.link then
+        local name, icon, quality, full = itemFacts(card.link)
         name, icon, quality = name or card.name, icon or card.icon, quality or card.quality
+        local link = card.demo and full or card.link
         different = different or name ~= card.name or icon ~= card.icon or quality ~= card.quality
-        card.name, card.icon, card.quality = name, icon, quality
+            or link ~= card.link
+        card.name, card.icon, card.quality, card.link = name, icon, quality, link
     end
     if different then changed(card, { item = true }) end
 end
@@ -418,10 +425,10 @@ end
 -- result, so its candidates are the live rolls that are due, with DUE_WINDOW seconds or less left on their
 -- own clock, and then the ended ones, each group by those rules; a roll with more time left is never one:
 -- its own clock says the drop cannot be its own (an old drop sent again while it runs is not its result).
--- Nil when there is none.
+-- A demo card is no roll of the game's and never takes a drop. Nil when there is none.
 local function rollOfDrop(info, link, isLate)
     local candidates = showing(link, ns.Items.ID(link), function(card)
-        if card.rollID == nil or card.dropKey ~= nil then return false end
+        if card.rollID == nil or card.dropKey ~= nil or card.demo then return false end
         if not isLate then return card.status == "live" end
         return card.status == "ended" or (card.status == "live" and Rolls.TimeLeft(card) <= DUE_WINDOW)
     end)
@@ -679,9 +686,10 @@ ns.On("CANCEL_LOOT_ROLL", function(_, rollID)
     end
 end)
 
+-- Every roll of the game's; a demo card's is none of them.
 ns.On("CANCEL_ALL_LOOT_ROLLS", function()
     for _, card in ipairs(Rolls.Cards()) do
-        if card.rollID then finish(card) end
+        if card.rollID and not card.demo then finish(card) end
     end
 end)
 

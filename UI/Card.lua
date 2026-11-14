@@ -21,7 +21,9 @@
 --    view.divider                      the hairline along the card's top: the window hides it on the first card
 --    ns.Card.NewRow(parent) -> row     one row (.pr), anchored by the caller; Recent rolls paints with it
 --    row:Set(data, opts)               data: a row of ns.Rolls.Rows (or a copy of one); opts = { decided = bool,
---                                      height = 21 | 19 }: decided, everyone but the winner fades back
+--                                      fade = bool, height = 21 | 19 }: decided, a loser's number is muted and
+--                                      everyone but the winner fades back, unless fade is false (Recent rolls' open
+--                                      line, R44: then a row dims by its pick, as before the decision)
 --  The rows of a view are pooled with it. In a raid (ns.Group.IsRaid()) a card lists who picks Need, Greed or
 --  Transmog, the winner and the player; a summary line counts the rest ("13 passed · 2 choosing") and lists
 --  them when clicked.
@@ -266,8 +268,9 @@ local function paintRow(row)
     local r, g, b = Th.Accent()
     row.wash:SetVertexColor(r, g, b, WASH_ALPHA)
 
-    -- Once the roll is over everyone but the winner fades back; before, a pass and who is not in the roll.
-    if opts.decided then
+    -- Once the roll is over everyone but the winner fades back (unless the caller keeps them, R44); before, a pass and
+    -- who is not in the roll.
+    if opts.decided and opts.fade ~= false then
         row:SetAlpha(winner and 1 or LOSER)
     else
         row:SetAlpha(DIM[state] or 1)

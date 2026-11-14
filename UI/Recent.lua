@@ -5,7 +5,8 @@
 --  "Everyone passed" / "Roll ended", and the result's age on the right. A click opens everyone's pick under the
 --  line (the card's own rows, 19 px high, 44 px in); a second click, or a click on another line, closes it. A
 --  footer says how long the list is kept. While the view shows, it redraws when the history changes and its ages
---  every 10 seconds.
+--  every 10 seconds. A damaged saved list never stops it: what cannot be read shows as unknown (a time without an
+--  age or a day, a place as "Unknown"), and a redraw that fails anyway is reported, not repeated every frame.
 --    ns.Recent.view   the view's frame, once the window has built it (registered as "recent")
 --  Labels follow each other in time: a place visited again after another starts a label of its own.
 -------------------------------------------------------------------------------
@@ -37,6 +38,7 @@ local EMPTY_H, EMPTY_TEXT = 28, 5 + 14.7 / 2                   -- no results: a 
 
 local AGES_EVERY = 10 -- seconds between redraws of the ages
 local DAY = 86400
+local LAST_TIME = 2 ^ 32 -- a time() past this (the year 2106) is a damaged one
 
 -- Words. A pick's is the game's where it has one, else English; Transmog is always the short word (R27).
 local WORDS = { need = { "NEED", "Need" }, greed = { "GREED", "Greed" }, transmog = { false, "Transmog" } }
@@ -68,18 +70,36 @@ local function playerWon(entry)
     return false
 end
 
+-- A row as the card's painter takes it: only what the saved list holds in the clear and of the right kind.
+local function cleanRow(data)
+    return {
+        guid = ns.Text(data.guid), name = ns.Text(data.name), class = ns.Text(data.class), state = ns.Text(data.state),
+        roll = ns.Clear(data.roll, "number"), isPlayer = data.isPlayer == true, isWinner = data.isWinner == true,
+    }
+end
+
+-- A time the clock can read: a whole date, not a damaged number.
+local function readable(at)
+    at = ns.Clear(at, "number")
+    return at ~= nil and at == at and at >= 0 and at < LAST_TIME
+end
+
+local function ageOf(entry, now)
+    return readable(entry.at) and ns.History.Age(entry, now) or ""
+end
+
 local function itemName(entry)
     local link = ns.Text(entry.link)
     return ns.Text(entry.name) or (link and link:match("|h%[(.-)%]|h")) or ""
 end
 
--- "today", "yesterday", else the date ("12 Nov"), by the clock's own days.
+-- "today", "yesterday", else the date ("12 Nov"), by the clock's own days; today for a time it cannot read.
 local function dayOf(at, now)
-    if type(at) ~= "number" then return TODAY end
-    local day = date("%Y-%m-%d", at)
-    if day == date("%Y-%m-%d", now) then return TODAY end
-    if day == date("%Y-%m-%d", now - DAY) then return YESTERDAY end
-    return (date("%d %b", at):gsub("^0", ""))
+    if not readable(at) then return TODAY end
+    local day = date("%Y-%m-%d", at) or ""
+    if day == (date("%Y-%m-%d", now) or "") then return TODAY end
+    if day == (date("%Y-%m-%d", now - DAY) or "") then return YESTERDAY end
+    return ((date("%d %b", at) or ""):gsub("^0", ""))
 end
 
 -------------------------------------------------------------------------------
@@ -160,7 +180,7 @@ local function paintLine(line, entry, now, open)
     line.icon:SetItem(entry.icon, entry.quality)
     line.name:SetText(itemName(entry))
     W.SetTextColor(line.name, { Th.Quality(ns.Clear(entry.quality, "number")) })
-    line.age:SetText(ns.History.Age(entry, now))
+    line.age:SetText(ageOf(entry, now))
 
     -- Who won: "<First>" in the class colour or "You" in the accent, "·", "Need 87"; else what happened instead.
     local winner = type(entry.winner) == "table" and entry.winner or nil
@@ -184,8 +204,9 @@ local function paintLine(line, entry, now, open)
     if open then line.hover:Hide() end
 end
 
--- Everyone's pick under the open line (.hx): the card's rows, drawn as the mockup draws them there: by each one's
--- pick (a pass dimmed), the winner washed and crowned. -> its height
+-- Everyone's pick under the open line (.hx): the card's rows, drawn as the mockup draws them there (R44): decided,
+-- the winner washed and crowned and a loser's number muted, but not faded back as a decided card's rows are: each
+-- row dims by its pick (a pass at 55 %). -> its height
 local function placePicks(view, entry, y)
     local picks = view.picks
     picks:ClearAllPoints()
@@ -206,7 +227,7 @@ local function placePicks(view, entry, y)
             row:SetPoint("TOPLEFT", picks, "TOPLEFT", PICKS_X, -top)
             row:SetPoint("TOPRIGHT", picks, "TOPRIGHT", -PAD_X, -top)
             row:Show() -- before Set: a row the game has hidden has no width to fit a name to
-            row:Set(data, { decided = false, height = ROW_H })
+            row:Set(cleanRow(data), { decided = true, fade = false, height = ROW_H })
         end
     end
     for i = n + 1, #picks.rows do picks.rows[i]:Hide() end
@@ -218,8 +239,10 @@ end
 -------------------------------------------------------------------------------
 --  Drawing
 -------------------------------------------------------------------------------
--- The whole list from the history as it is now. Remembers its height and when it drew.
+-- The whole list from the history as it is now. Remembers its height and when it drew (first: a draw that fails
+-- is not tried again before the next tick).
 local function draw(view)
+    view.drawnAt = GetTime()
     local now = time()
     local y, sections, lines, open, label = 0, 0, 0, false, nil
     for _, entry in ipairs(ns.History.Entries()) do
@@ -260,7 +283,6 @@ local function draw(view)
     view.footer:SetPoint("TOPRIGHT", view, "TOPRIGHT", 0, -y)
     view.height = y + HINT_H
     view:SetHeight(view.height)
-    view.drawnAt = GetTime()
 end
 
 -- Draws the list again and has the window fit it.
@@ -308,9 +330,10 @@ local function build(parent)
     function view:Height() return self.height end
     -- The ages move on while the list shows (a hidden view gets no OnUpdate).
     view:SetScript("OnUpdate", function(self)
-        if GetTime() - (self.drawnAt or 0) >= AGES_EVERY then redraw(self) end
+        if GetTime() - (self.drawnAt or 0) >= AGES_EVERY then ns.Safe(redraw, self) end
     end)
-    W.Paint(view, draw) -- the looks changed: the fonts, and with them the labels' room
+    -- The looks changed: the fonts, and with them the labels' room. Protected: the other painters go on.
+    W.Paint(view, function(self) ns.Safe(draw, self) end)
     Recent.view = view
     return view
 end

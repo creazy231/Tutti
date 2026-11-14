@@ -4,11 +4,12 @@
 --  own buttons go down and are clicked); the numbers come in; the first member wins the axe, the player the gloves.
 --  The window then folds and closes as it does for real rolls, and the results go to Recent rolls, marked as the
 --  demo's (gone at the next login). The cards are demo cards (Core/Rolls.lua): Tutti's own ids, a pick never reaches
---  the game. The demo plays its script whatever is clicked on its cards meanwhile.
+--  the game. The demo plays its script whatever is clicked on its cards meanwhile: the history it plays says the
+--  player picked what the script picks, so the finale is the script's.
 --  The group: the player's own when grouped, its members playing the mockup's four parts in the party's order (in a
 --  raid everyone past them passes), else R30's made-up party: Orlen Brightmoor, Brisé Tidewater, Corvel Duskmantle
 --  and Kestrel Ironmark, the player after them as in the mockup.
---    ns.Demo.Start() -> ok    plays the boss drop; false while one plays
+--    ns.Demo.Start() -> ok    plays the boss drop; while one plays, says so in the chat and gives false
 -------------------------------------------------------------------------------
 local _, ns = ...
 local Demo = {}
@@ -23,6 +24,7 @@ local AXE = { id = 273046, name = "Guardian's Dualblade", label = "Two-Hand Axe"
 local GLOVES = { id = 273054, name = "Cartilage Shapers", label = "Leather Hands",
     icon = "Interface\\Icons\\INV_Gauntlets_05", canNeed = true }
 local NEED_REFUSED = "Your class may not roll need on this item." -- the game's reason 1, where it has no text
+local PLAYING = "the demo is already playing"
 
 -- R30's cast, for a player on their own: the mockup's paladin, shaman, mage and warrior.
 local CAST = {
@@ -55,7 +57,15 @@ local function cast()
     return run
 end
 
--- The item as the client has it, else the words here: name, link (nil until the client has it), quality, icon.
+-- The client is asked for the items, so a first demo fills in their names and links as it plays
+-- (GET_ITEM_INFO_RECEIVED, as for a card the loot history made).
+local function request(item)
+    local load = C_Item and ns.Clear(C_Item.RequestLoadItemDataByID, "function")
+    if load then ns.Safe(load, item.id) end
+end
+
+-- The item as the client has it, else the words here: name, link (the item's own, "item:<id>", until the client has
+-- it), quality, icon.
 local function itemInfo(item)
     local name, link, quality, icon
     local get, instant = C_Item and C_Item.GetItemInfo, C_Item and C_Item.GetItemInfoInstant
@@ -66,7 +76,7 @@ local function itemInfo(item)
     if type(instant) == "function" then
         icon = ns.Clear(select(5, instant(item.id)), "number")
     end
-    return name or item.name, link, quality or RARE, (icon and icon > 0) and icon or item.icon
+    return name or item.name, link or ("item:" .. item.id), quality or RARE, (icon and icon > 0) and icon or item.icon
 end
 
 local function fields(run, item)
@@ -78,7 +88,7 @@ local function fields(run, item)
             isSelf = member == run.player, order = i }
     end
     return {
-        link = link, name = name, icon = icon, quality = quality, count = 1, bop = true,
+        link = link, itemID = item.id, name = name, icon = icon, quality = quality, count = 1, bop = true,
         label = label or item.label, ilvl = ilvl or ILVL,
         canNeed = item.canNeed, canGreed = true, canTransmog = false,
         reasonNeed = not item.canNeed and (ns.Text(LOOT_ROLL_INELIGIBLE_REASON1) or NEED_REFUSED) or nil,
@@ -129,25 +139,29 @@ local function button(card, kind)
 end
 
 -- The player's pick: the button goes down (press), then comes up and is clicked (pick), as the mouse does it. A card
--- the window does not show takes the pick straight away.
+-- the window does not show takes the pick straight away. The history then says the player picked it, whatever was
+-- clicked before: its word beats the click (Rolls.Rows), so the finale stays the script's.
 local function press(card, kind)
     local b = button(card, kind)
     local down = b and b:GetScript("OnMouseDown")
     if down then down(b, "LeftButton") end
 end
 
-local function pick(card, kind)
+local function pick(run, card, kind)
     local b = button(card, kind)
-    if not b then
+    if b then
+        local up = b:GetScript("OnMouseUp")
+        if up then up(b, "LeftButton") end
+        b:Click()
+    else
         ns.Rolls.Pick(card, kind)
-        return
     end
-    local up = b:GetScript("OnMouseUp")
-    if up then up(b, "LeftButton") end
-    b:Click()
+    choose(run, card, "me", kind)
 end
 
--- The mockup's PLAY timeline, in seconds from the drop: who picks what, when the numbers come, who wins.
+-- The mockup's PLAY timeline, in seconds from the drop: who picks what, when the numbers come, who wins. The gloves'
+-- numbers and win come 2.2 s later than the mockup's (11.2 and 12.3), so the axe's fold, 4 s after its win, falls in
+-- the wait after the player's pick and not on the gloves' win: 2.2 s apart, as the mockup keeps a win and a fold.
 local function timeline(run, axe, gloves)
     return {
         { 0.9, function() choose(run, axe, 1, "need") end },
@@ -163,21 +177,26 @@ local function timeline(run, axe, gloves)
         end },
         { 2.6, function() choose(run, gloves, 4, "pass") end },
         { 3.3, function() press(axe, "greed") end },
-        { 3.7, function() pick(axe, "greed") end },
+        { 3.7, function() pick(run, axe, "greed") end },
         { 4.4, function() choose(run, axe, 4, "pass") end },
         { 5.0, function() reveal(run, axe, { [1] = 19 }) end },
         { 6.1, function() win(run, axe, 1) end },
         { 7.1, function() choose(run, gloves, 1, "greed") end },
         { 7.9, function() press(gloves, "need") end },
-        { 8.3, function() pick(gloves, "need") end },
-        { 9.0, function() reveal(run, gloves, { [2] = 52, me = 87 }) end },
-        { 10.1, function() win(run, gloves, "me") end },
+        { 8.3, function() pick(run, gloves, "need") end },
+        { 11.2, function() reveal(run, gloves, { [2] = 52, me = 87 }) end },
+        { 12.3, function() win(run, gloves, "me") end },
     }
 end
 
+-- Playing from the moment its steps are set: a start that fails before leaves the next one free.
 function Demo.Start()
-    if playing then return false end
-    playing = true
+    if playing then
+        ns.Print(PLAYING)
+        return false
+    end
+    request(AXE)
+    request(GLOVES)
     local run = cast()
     local axe = ns.Rolls.AddDemo(fields(run, AXE))
     local gloves = ns.Rolls.AddDemo(fields(run, GLOVES))
@@ -188,5 +207,6 @@ function Demo.Start()
             if i == #steps then playing = false end
         end)
     end
+    playing = true
     return true
 end
