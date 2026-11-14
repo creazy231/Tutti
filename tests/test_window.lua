@@ -592,34 +592,40 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win.scroll:GetVerticalScroll(), 0)
 end)
 
-T.it("a card that waits on the player scrolls into view, unless the player scrolled by hand", function()
+T.it("cards that wait on the player bring the first of them to the top, unless the player scrolled by hand", function()
     local G, W, ns, win = setup()
+    ns.Set("scale", 1.3) -- the largest size: a boss drop of three is more than the window holds
     local cards = {}
-    for n = 1, 4 do cards[n] = roll(W, ns, n) end
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end -- three rolls at once
     W.advance(0.35)
     local visible = win.scroll:GetHeight()
     local function inView(card)
         local y = at(W, win, win.views[card])
         return y >= 32 and y < 32 + visible
     end
-    cards[5] = roll(W, ns, 5)
-    T.ok(32 + heights(win, cards) > 0.7 * 1080, "more than the window holds")
-    T.ok(inView(cards[5]), "the new card's top is in sight")
-    T.near(at(W, win, win.views[cards[5]]) + win.views[cards[5]]:Height(), 32 + visible, 1e-6,
-        "the whole card, the least scrolled")
-    -- The player scrolls by hand: a new card leaves their scroll alone.
+    T.ok(heights(win, cards) > visible, "the window scrolls")
+    T.ok(inView(cards[1]), "the first card's top is in sight")
+    T.eq(at(W, win, win.views[cards[1]]), 32, "at the top of what shows: the player works down from there")
+    -- The player has rolled on the first: the next roll brings up the oldest card still waiting.
+    win.views[cards[1]].buttons.pass:Click()
+    cards[4] = roll(W, ns, 4)
+    T.eq(at(W, win, win.views[cards[2]]), 32, "the first card still waiting, at the top")
+    -- The player scrolls by hand: nothing scrolls by itself any more.
     for _ = 1, 30 do win.scroll:_fire("OnMouseWheel", 1) end
-    cards[6] = roll(W, ns, 6)
+    cards[5] = roll(W, ns, 5)
     T.eq(win.scroll:GetVerticalScroll(), 0, "the player's own scroll stays")
-    T.no(inView(cards[6]))
-    -- Once the window has closed and opened again, new cards are brought into view again.
-    for n = 1, 6 do win.views[cards[n]].buttons.pass:Click() end
-    for n = 1, 6 do decide(G, W, n, ORLEN, 10 + n) end
+    -- Until the window has closed and opened again.
+    for n = 1, 5 do
+        if ns.Rolls.AwaitsMe(cards[n]) then win.views[cards[n]].buttons.pass:Click() end
+        decide(G, W, n, ORLEN, 10 + n)
+    end
     W.advance(10.1)
     W.advance(0.55)
     T.no(win:IsShown())
-    for n = 1, 5 do cards[n] = roll(W, ns, n) end
-    T.ok(inView(cards[5]), "a new opening, a new start")
+    for n = 1, 3 do cards[n] = roll(W, ns, n) end
+    win.views[cards[1]].buttons.pass:Click()
+    cards[4] = roll(W, ns, 4)
+    T.eq(at(W, win, win.views[cards[2]]), 32, "a new opening, a new start")
 end)
 
 -------------------------------------------------------------------------------

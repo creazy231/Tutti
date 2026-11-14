@@ -399,16 +399,17 @@ local function relayout()
     scrollTo(scrolled())
 end
 
--- A card the player has to roll on is never left out of sight: the rolls scroll the least that shows it whole
--- (its top, when it is higher than the window can show), unless the player has scrolled by hand since the
--- window last opened.
-local function reveal(card)
-    local top, view = tops[card], views[card]
-    if byHand or current ~= "rolls" or folded[card] or not (top and view) then return end
-    local offset, bottom = scrolled(), top + view:Height()
-    if bottom > offset + visibleHeight then offset = bottom - visibleHeight end
-    if top < offset then offset = top end
-    scrollTo(offset)
+-- The cards the player has to roll on are never pushed out of sight: when one comes, the rolls scroll so the
+-- first of them, the oldest still waiting, is at the top of what shows (a boss drop lands at once, and the
+-- player works down from the top), unless the player has scrolled by hand since the window last opened.
+local function revealWaiting()
+    if byHand or current ~= "rolls" then return end
+    for _, card in ipairs(order) do
+        if not folded[card] and tops[card] and Rolls.AwaitsMe(card) then
+            scrollTo(tops[card])
+            return
+        end
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -724,8 +725,8 @@ end)
 -------------------------------------------------------------------------------
 --  Wiring
 -------------------------------------------------------------------------------
--- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden),
--- scrolled to the card when it waits on the player.
+-- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden).
+-- When it waits on the player, the first card that does comes to the top.
 ns.Listen("CARD_ADDED", function(card)
     if type(card) ~= "table" or views[card] then return end
     local view = Card.Acquire(rolls)
@@ -735,11 +736,12 @@ ns.Listen("CARD_ADDED", function(card)
     awaited[card] = Rolls.AwaitsMe(card)
     refold()
     UI.Open("rolls")
-    if awaited[card] then reveal(card) end
+    if awaited[card] then revealWaiting() end
 end)
 
 -- The card draws what changed. A card that starts waiting on the player (its roll joined a card the history
--- made, or a bind confirmation gave the pick back) brings the rolls up, hidden or not, and itself into sight.
+-- made, or a bind confirmation gave the pick back) brings the rolls up, hidden or not, with the first card that
+-- waits on the player at the top.
 ns.Listen("CARD_CHANGED", function(card, changes)
     local view = views[card]
     if not view then return end
@@ -749,7 +751,7 @@ ns.Listen("CARD_CHANGED", function(card, changes)
     awaited[card] = awaits
     if started then
         UI.Open("rolls")
-        reveal(card)
+        revealWaiting()
     else
         relayout()
         drawHeader()
