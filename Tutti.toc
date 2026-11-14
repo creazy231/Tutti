@@ -26,3 +26,7 @@ UI\Widgets.lua
 UI\Fx.lua
 UI\Card.lua
 UI\Window.lua
+UI\Recent.lua
+UI\Settings.lua
+UI\Launcher.lua
+UI\Demo.lua
