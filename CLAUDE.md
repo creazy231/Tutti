@@ -51,6 +51,8 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
     clear and of that type, else nil) and `ns.Text(value)` is the same for a non-empty string, so do
     not write a copy of either guard;
   - every event and message handler runs through the protected dispatch (`ns.On`, `ns.Listen`);
+    the one ruled exception is the menu's bare `GLOBAL_MOUSE_DOWN` script in `UI/Widgets.lua`
+    (Sotto's): it is its frame's only handler and only hides the menu;
   - EllesmereUI only through `EllesmereUI.RegisterSkin` getters (`GetPanelColor`,
     `GetAccentColor`, `GetFont`, `OnLooksChanged`): no EllesmereUI internals, no `EllesmereUIDB`.
 - Never ship `docs/`, `tests/` or `tools/` (`.pkgmeta` ignores them, with this file and the

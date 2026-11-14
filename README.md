@@ -22,7 +22,10 @@ whole group's rolls in one window.
 - **Roll right there.** A card that waits on you has an accent edge and buttons for Need,
   Greed and Pass (Transmog in place of Greed when the game offers it). If you can't Need an
   item, that button is greyed out with the game's reason. Your pick shows in your row at
-  once, and the close button stays hidden while a card waits on you, so no roll is missed.
+  once. Until you pick, the card stays in sight: the window scrolls to it when the cards
+  change, nothing moves under the mouse right after your click, the close button stays
+  hidden, and from Recent rolls or Settings the count in the header (in the accent colour)
+  leads back to it; 10 seconds before the roll ends the window goes back by itself.
   Soulbound items still get Blizzard's own confirmation: Tutti never confirms for you.
 - **A clear winner.** The winner's row lights up in the accent colour and gets a crown, its
   number turns accent-coloured and the other rows fade back. The subtitle reads "Name won ·

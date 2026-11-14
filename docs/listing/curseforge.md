@@ -51,7 +51,7 @@ When an item drops in your group, Tutti opens by itself and shows who picked Nee
 
 - **Opens by itself.** When a group roll starts, every item gets a card: icon, name, item type and level, and the seconds left. Your whole group is listed under it, in party order.
 - **Everyone's pick.** Need, Greed, Transmog or Pass, each with an icon and a word, or three dots while someone is still choosing. Roll numbers spin in as they arrive.
-- **Roll right there.** Cards that wait on you have Need, Greed and Pass buttons (Transmog in place of Greed when the game offers it), and Blizzard's roll popups stay hidden. If you can't Need an item, the button is greyed out with the game's reason.
+- **Roll right there.** Cards that wait on you have Need, Greed and Pass buttons (Transmog in place of Greed when the game offers it), and Blizzard's roll popups stay hidden. If you can't Need an item, the button is greyed out with the game's reason. Until you pick, the card stays in sight and the window stays open.
 
 ![Rolling Need right from the card](https://raw.githubusercontent.com/creazy231/Tutti/main/docs/listing/animations/02-roll-from-the-window.gif)
 
