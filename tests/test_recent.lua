@@ -10,6 +10,9 @@ local BRISE = { guid = "Player-1-0003", name = "Brisé", class = "SHAMAN" }
 local CORVEL = { guid = "Player-1-0004", name = "Corvel", class = "MAGE" }
 local KESTREL = { guid = "Player-1-0005", name = "Kestrel", class = "WARRIOR" }
 
+-- A line (.hl) as the mockup measures it (R40): 5 px, the name's 15 px line, the winner's 13 px line, 5 px.
+local LINE, INSET = 38, 5
+
 -- One row as History keeps it: a copy of a row of ns.Rolls.Rows.
 local function row(who, state, roll, won)
     return { guid = who.guid, name = who.name, class = who.class, isPlayer = who.isPlayer == true, state = state,
@@ -113,7 +116,7 @@ T.it("lines newest first under their place", function()
     T.eq(text(W, lines[2].age), "6m")
     T.eq(text(W, lines[3].age), "22m")
 
-    -- Under the header: the first place's label (22 px, no hairline under the header's), its two lines (36 px),
+    -- Under the header: the first place's label (22 px, no hairline under the header's), its two lines (38 px),
     -- the second place's label (23 px, its hairline), its line, 4 px, the footer (29 px).
     local first, second = view.sections[1], view.sections[2]
     T.eq(text(W, first.label), "STONEWATCH KEEP · TODAY")
@@ -135,19 +138,19 @@ T.it("lines newest first under their place", function()
     _, y = box(W, win, lines[1])
     T.eq(y, 32 + 22)
     _, y, _, h = box(W, win, lines[2])
-    T.eq(y, 32 + 22 + 36, "36 px a line")
-    T.eq(h, 36)
+    T.eq(y, 32 + 22 + LINE, "38 px a line")
+    T.eq(h, LINE)
     _, y, _, h = box(W, win, second)
-    T.eq(y, 32 + 22 + 72)
+    T.eq(y, 32 + 22 + 2 * LINE)
     T.eq(h, 23)
     T.ok(second.hair:IsShown(), "a hairline over the next place")
-    T.near(middle(W, win, second.label), 32 + 22 + 72 + 1 + 7 + 13.3 / 2, 1e-6)
+    T.near(middle(W, win, second.label), 32 + 22 + 2 * LINE + 1 + 7 + 13.3 / 2, 1e-6)
     _, y = box(W, win, lines[3])
-    T.eq(y, 32 + 22 + 72 + 23)
+    T.eq(y, 32 + 22 + 2 * LINE + 23)
     _, y, _, h = box(W, win, view.footer)
-    T.eq(y, 32 + 22 + 72 + 23 + 36 + 4, "4 px after the last line")
+    T.eq(y, 32 + 22 + 2 * LINE + 23 + LINE + 4, "4 px after the last line")
     T.eq(h, 29)
-    T.eq(view:Height(), 22 + 72 + 23 + 36 + 4 + 29)
+    T.eq(view:Height(), 22 + 2 * LINE + 23 + LINE + 4 + 29)
     T.eq(win:GetHeight(), 32 + view:Height(), "the window fits the list")
 
     -- A line: the icon 26 px, the name and who won beside it, the age on the right.
@@ -155,13 +158,13 @@ T.it("lines newest first under their place", function()
     x, y, _, h = box(W, win, line.icon)
     T.eq(x, 10)
     T.eq(h, 26)
-    T.eq(y, 32 + 22 + 5, "centred on the line")
+    T.eq(y, 32 + 22 + (LINE - 26) / 2, "centred on the line")
     T.eq(box(W, win, line.name), 44, "8 px after the icon")
-    T.near(middle(W, win, line.name), 32 + 22 + 4 + 7.5, 1e-6, "the name's 15 px line")
-    T.near(middle(W, win, line.who), 32 + 22 + 4 + 15 + 6.5, 1e-6, "and the 13 px line under it")
+    T.near(middle(W, win, line.name), 32 + 22 + INSET + 7.5, 1e-6, "the name's 15 px line")
+    T.near(middle(W, win, line.who), 32 + 22 + INSET + 15 + 6.5, 1e-6, "and the 13 px line under it")
     local ax, _, aw = box(W, win, line.age)
     T.eq(ax + aw, 290, "the age 10 px from the right")
-    T.near(middle(W, win, line.age), 32 + 22 + 4 + 1 + 14.7 / 2, 1e-6, "at the top, 1 px down")
+    T.near(middle(W, win, line.age), 32 + 22 + INSET + 1 + 14.7 / 2, 1e-6, "at the top, 1 px down")
     T.eq(select(2, line.name:GetFont()), 12.5)
     same(color(line.name), { ns.Theme.Quality(3) }, "the name in its quality's colour")
     T.eq(select(2, line.age:GetFont()), 10.5)
@@ -217,11 +220,11 @@ T.it("click opens the picks, second click closes", function()
     T.ok(view.picks:IsShown(), "the click opens everyone's pick")
     T.ok(gloves.selected:IsShown(), "the line is selected")
     local _, y, w, h = box(W, win, view.picks)
-    T.eq(y, 32 + 22 + 36, "right under its line")
+    T.eq(y, 32 + 22 + LINE, "right under its line")
     T.eq(w, 300)
     T.eq(h, 2 + 5 * 19 + 6, "2 px, a 19 px row each, 6 px")
     _, y = box(W, win, treads)
-    T.eq(y, 32 + 22 + 36 + h, "the next line moves down")
+    T.eq(y, 32 + 22 + LINE + h, "the next line moves down")
     T.eq(win:GetHeight(), height + h, "and the window grows")
 
     local rows = {}
@@ -231,7 +234,7 @@ T.it("click opens the picks, second click closes", function()
     T.eq(#rows, 5, "one row each")
     local x, ry, rw, rh = box(W, win, rows[1])
     T.eq(x, 44, "indented 44 px")
-    T.eq(ry, 32 + 22 + 36 + 2)
+    T.eq(ry, 32 + 22 + LINE + 2)
     T.eq(rw, 246, "to 10 px from the right")
     T.eq(rh, 19)
     T.eq(text(W, rows[1].name), "Orlen")
@@ -252,7 +255,7 @@ T.it("click opens the picks, second click closes", function()
     T.no(gloves.selected:IsShown(), "another line takes the open place")
     T.ok(treads.selected:IsShown())
     _, y = box(W, win, view.picks)
-    T.eq(y, 32 + 22 + 72)
+    T.eq(y, 32 + 22 + 2 * LINE)
     T.eq(text(W, view.picks.rows[2].name), "Brisé")
 end)
 
@@ -295,7 +298,7 @@ T.it("a result that comes in while the list shows goes on top, and a late decisi
     T.eq(#lines, 4)
     T.eq(text(W, lines[1].name), "Violet Sorcerer's Robes")
     T.eq(text(W, lines[1].how), "Roll ended")
-    T.eq(win:GetHeight(), height + 36, "the window grows with it")
+    T.eq(win:GetHeight(), height + LINE, "the window grows with it")
     -- The history updates the entry in place (R21): the same line says who won.
     late.rows = { row(CORVEL, "need", 88, true), row(AYLA, "pass") }
     late.winner, late.ended = { name = "Corvel", class = "MAGE", state = "need", roll = 88 }, false

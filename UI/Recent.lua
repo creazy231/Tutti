@@ -20,7 +20,7 @@ local WIDTH, PAD_X = 300, 10                                  -- the window; .se
 local SEC_H, SEC_FIRST_H, SEC_TEXT = 23, 22, 7 + 13.3 / 2      -- .sec: 1 + 7 + 13.3 + 2, without its hairline right
                                                                -- under the header's (.hd + .sec); its line's middle
 local SEC_GAP = 8                                              -- the line after the label
-local LINE_H = 36                                              -- .hl: the Global Constraints' recent line
+local LINE_H = 38                                              -- .hl: 5 + 15 + 13 + 5, as the mockup measures (R40)
 local ICON, ICON_GAP = 26, 8                                   -- .hl .ico, .hl gap
 local TEXT_X = PAD_X + ICON + ICON_GAP                         -- 44
 local NAME_H, WHO_H, AGE_H = 15, 13, 14.7                      -- .hl .in, .hl .hw, .hl time line heights

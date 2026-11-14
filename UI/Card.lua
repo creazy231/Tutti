@@ -348,12 +348,13 @@ end
 -------------------------------------------------------------------------------
 --  The item: its tooltip and a modified click (icon and name, on the card and the folded line)
 -------------------------------------------------------------------------------
--- The roll's own tooltip while the game still has the roll, else (or when the game cannot show it) the link's.
+-- The roll's own tooltip while the game still has the roll, else (or when the game cannot show it) the link's. A
+-- demo card's roll ID is made up and the game has no such roll, so it shows the link straight away (R41).
 local function showItem(owner, card)
     if not card then return end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     local shown = false
-    if card.rollID and card.status == "live" and not card.over then
+    if card.rollID and not card.demo and card.status == "live" and not card.over then
         shown = pcall(GameTooltip.SetLootRollItem, GameTooltip, card.rollID)
     end
     if not shown and card.link then

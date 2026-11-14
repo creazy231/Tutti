@@ -881,6 +881,27 @@ T.it("a roll item the tooltip cannot show falls back to the item's link", functi
     T.ok(G.GameTooltip:IsShown())
 end)
 
+-- R41: a demo card's roll ID is made up, and the game may draw nothing for it without raising.
+T.it("a demo card's tooltip is its item's link, never the game's roll (R41)", function()
+    local asked = {}
+    local G, W, ns, window = setup({ setup = function(G)
+        G.GameTooltip.SetLootRollItem = function(self, rollID) asked[#asked + 1] = rollID end
+    end })
+    local link = W.itemLink(AXE, "Guardian's Dualblade", 3)
+    local card = ns.Rolls.AddDemo({ link = link, name = "Guardian's Dualblade", quality = 3, canNeed = true,
+        canGreed = true, startedAt = G.GetTime(), duration = 60 })
+    local view = show(ns, window, card)
+    T.ok(ns.Rolls.AwaitsMe(card), "live and waiting on the player, as a roll is")
+    view.iconHit:_fire("OnEnter")
+    T.eq(#asked, 0, "the game is never asked for a roll it does not have")
+    T.eq(G.GameTooltip._link, link, "the item's link straight away")
+    T.ok(G.GameTooltip:IsShown())
+    view.iconHit:_fire("OnLeave")
+    local real = roll(W, ns, window)
+    real.iconHit:_fire("OnEnter")
+    T.eq(asked[1], 7, "a real roll still shows its own item")
+end)
+
 T.it("a pooled view comes back with its hairline, which the window hides on the first card only", function()
     local G, W, ns, window = setup()
     local view = roll(W, ns, window)
