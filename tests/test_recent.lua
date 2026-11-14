@@ -417,3 +417,37 @@ T.it("a result of /tutti demo says DEMO before its age (final review, item 7)", 
     ns.Fire("HISTORY_CHANGED")
     T.eq(text(W, shownLines(view)[1].demo), "")
 end)
+
+T.it("one table of pick words: the buttons, the cards' rows and Recent rolls say the same (final review, item 9)",
+    function()
+    local G, W, ns, win = setup()
+    -- A client with its own words, and the long Transmogrification noun (R27 keeps "Transmog").
+    G.NEED, G.GREED, G.PASS, G.TRANSMOGRIFICATION = "Bedarf", "Gier", "Passen", "Transmogrifikation"
+    T.eq(ns.W.PickWord("need"), "Bedarf")
+    T.eq(ns.W.PickWord("greed"), "Gier")
+    T.eq(ns.W.PickWord("pass"), "Passen")
+    T.eq(ns.W.PickWord("transmog"), "Transmog")
+    for _, other in ipairs({ "wait", "out", "x", 1, {} }) do
+        T.eq(ns.W.PickWord(other), nil, "no pick: " .. tostring(other))
+    end
+    T.eq(ns.W.PickWord(nil), nil)
+    -- The roll buttons.
+    W.addRoll(7, { link = W.itemLink(18000, "Glass Sphere", 3), name = "Glass Sphere", texture = 134333 })
+    W.addRoll(8, { link = W.itemLink(18001, "Cartilage Shapers", 3), name = "Cartilage Shapers", texture = 134333,
+        canTransmog = true })
+    local cards = ns.Rolls.Cards()
+    local view, transmog = win.views[cards[1]], win.views[cards[2]]
+    T.eq(text(W, view.buttons.need.label), "Bedarf")
+    T.eq(text(W, view.buttons.greed.label), "Gier")
+    T.eq(text(W, view.buttons.pass.label), "Passen")
+    T.eq(text(W, transmog.buttons.transmog.label), "Transmog")
+    -- The card's rows: the player needs.
+    view.buttons.need:Click()
+    T.eq(text(W, view.rows[1].word), "Bedarf")
+    -- Recent rolls: the winner's pick.
+    add(ns, result(G, { name = "Glass Sphere", rows = { row(AYLA, "need", 87, true) } }))
+    add(ns, result(G, { name = "Cartilage Shapers", rows = { row(ORLEN, "transmog", 40, true) } }))
+    local lines = shownLines(open(W, ns))
+    T.eq(text(W, lines[1].how), "Transmog 40")
+    T.eq(text(W, lines[2].how), "Bedarf 87")
+end)

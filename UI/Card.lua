@@ -81,9 +81,7 @@ local STAR, STAR_GAP = 9, 3
 local BADGE_FILL, BADGE_RING = 0.12, 0.35                 -- the badge colour over the ground, its outline
 local SUB_SIZE = 11                                       -- .is font size
 
--- Words. A pick's is the game's where it has one, else English; Transmog is always the short word (R27).
-local WORDS = { need = { "NEED", "Need" }, greed = { "GREED", "Greed" }, pass = { "PASS", "Pass" },
-    transmog = { false, "Transmog" } }
+-- Words. A pick's is W.PickWord's (the game's where it has one, else English; Transmog always the short word, R27).
 local CHOOSING, ABSENT = "choosing", "not in this roll"
 local YOUR_PICK, YOU_WON, WON, YOU = "Your pick", "You won", "won", "You"
 local EVERYONE_PASSED, ROLL_ENDED = "Everyone passed", "Roll ended"
@@ -94,9 +92,7 @@ local WINNING = { need = true, greed = true, transmog = true }            -- a s
 local BOLD, REGULAR = "item", "sub" -- font roles whose files are the bold and the regular font
 
 local function word(state)
-    local w = WORDS[state]
-    if w then return ns.Text(w[1] and _G[w[1]]) or w[2] end
-    return state == "wait" and CHOOSING or ABSENT
+    return W.PickWord(state) or (state == "wait" and CHOOSING or ABSENT)
 end
 
 -- "Need 19": how the winner won, nil for a state that cannot win (an unreadable pick).

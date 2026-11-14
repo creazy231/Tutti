@@ -41,8 +41,7 @@ local AGES_EVERY = 10 -- seconds between redraws of the ages
 local DAY = 86400
 local LAST_TIME = 2 ^ 32 -- a time() past this (the year 2106) is a damaged one
 
--- Words. A pick's is the game's where it has one, else English; Transmog is always the short word (R27).
-local WORDS = { need = { "NEED", "Need" }, greed = { "GREED", "Greed" }, transmog = { false, "Transmog" } }
+-- Words. A pick's is W.PickWord's (the game's where it has one, else English; Transmog always the short word, R27).
 local YOU, EVERYONE_PASSED, ROLL_ENDED = "You", "Everyone passed", "Roll ended"
 local TODAY, YESTERDAY, SOMEWHERE = "today", "yesterday", "Unknown"
 local FOOTER = "Kept for this session · /tutti opens this list"
@@ -55,11 +54,10 @@ local DEMO = "DEMO" -- the tag of a result of /tutti demo, as the section labels
 -- The results are Tutti's own saved data: read with the guards all the same, as a damaged list may hold anything.
 local function rowsOf(entry) return type(entry.rows) == "table" and entry.rows or {} end
 
--- "Need 87": the winner's pick and number; nil for a pick that cannot win (an unreadable one).
+-- "Need 87": the winner's pick and number; nil for a pick that cannot win (a pass, an unreadable one).
 local function howWon(winner)
-    local word = WORDS[winner.state]
+    local word = winner.state ~= "pass" and W.PickWord(winner.state)
     if not word then return nil end
-    word = ns.Text(word[1] and _G[word[1]]) or word[2]
     local roll = ns.Clear(winner.roll, "number")
     return roll and (word .. " " .. roll) or word
 end
