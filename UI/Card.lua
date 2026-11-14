@@ -14,11 +14,12 @@
 --                                      winner's wash sweeps and the crown pops, and when the winner is the
 --                                      player the icon ring glows twice and the shine crosses the card once; a
 --                                      decision that reaches a folded view plays when it unfolds
---    view:Height() -> px               9 + 34 + 16 [+ 31 buttons [+ 16 reason]] + 21 a row [+ 24 summary] + 7,
+--    view:Height() -> px               9 + 34 + 16 [+ 30 buttons [+ 16 reason]] + 21 a row [+ 24 summary] + 7,
 --                                      or 26 folded; the view's own height follows it
 --    view:SetFolded(bool)              the 26 px line: icon, name → winner, "Need 19"
 --    view:Tick()                       the countdown's seconds and bar; the window calls it every frame it shows
---    view.divider                      the hairline along the card's top: the window hides it on the first card
+--    view.divider                      the hairline just above the card (.card's border-top), in the 1 px the
+--                                      window leaves between two cards: the window hides it on the first card
 --    ns.Card.NewRow(parent) -> row     one row (.pr), anchored by the caller; Recent rolls paints with it
 --    row:Set(data, opts)               data: a row of ns.Rolls.Rows (or a copy of one); opts = { decided = bool,
 --                                      height = 21 | 19 }: decided, everyone but the winner fades back
@@ -39,12 +40,14 @@ local PAD_TOP, PAD_X, PAD_BOTTOM = 9, 10, 7               -- .card padding
 local ICON, ICON_GAP = 34, 9                              -- .ico, the .ihead gap
 local NAME_H, SUB_GAP, SUB_H = 16, 2, 13                  -- .in line height, .is margin and line height
 local TIMER_BLOCK, TIMER_GAP, TIMER_H = 16, 8, 2          -- .timer: 8 above, 2 high, 6 below
-local BUTTONS_BLOCK, BUTTONS_GAP, BUTTON_GAP = 31, 1, 4   -- .btns: 1 above, 23 high, 7 below; 4 between
+local BUTTONS_BLOCK, BUTTON_GAP = 30, 4                  -- .btns: 23 high, 7 below; 4 between. Its 1 px margin
+                                                          -- above collapses into the countdown's 6 px below it, as
+                                                          -- the mockup draws it
 local REASON_BLOCK, REASON_GAP, REASON_H = 16, -3, 12     -- .why: -3 above, 12 high, 7 below
 local ROW_H, FOLD_H = 21, 26                              -- .pr, .result
 local SUMMARY_GAP, SUMMARY_H = 2, 22                      -- .sum: 2 above it (its margin), 22 high (R35)
 local EDGE = 2                                            -- .card.yours::before, the winner's inset edge
-local PIECE_GAP, YOURS_GAP = 4, 3                         -- .is gap; a space before " · 54s"
+local PIECE_GAP, YOURS_GAP = 4, 3.5                       -- .is gap; the space before "· 54s" (318/1000 em at 11)
 local RING = 46                                           -- the glow ring, centred on the 34 px icon
 local SHINE_SHARE, SHINE_ALPHA, GLOWS = 0.34, 0.2, 2      -- the shine band: a third of the card, at 20 %
 local TRACK = { 1, 1, 1, 0.08 }                           -- .timer's ground
@@ -62,6 +65,7 @@ local LOSER = 0.42                                        -- everyone but the wi
 
 -- The summary line (.sum), the folded line (.result) and the BiS badge (.bis).
 local SUM_GAP, SUM_ICON, SUM_CHEVRON = 6, 12, 9
+local SUM_MIDDLE = -0.5                                   -- its items on the 21 px under its hairline (border-top)
 local FOLD_ICON, FOLD_GAP, FOLD_SIZE = 18, 7, 12
 local FOLD_NAME_X = PAD_X + FOLD_ICON + FOLD_GAP          -- 35
 local ARROW, ARROW_SIDE = 14, 2.5                         -- the turned arrow glyph, and its clear sides
@@ -98,13 +102,9 @@ end
 --  Text
 -------------------------------------------------------------------------------
 -- Sets a font string's font: a theme role, or a role's file at a size the roles lack (the subtitle's bold
--- 11 px, the badge's bold 10, the folded line's bold 12, a loser's regular 13).
+-- 11 px, the badge's bold 10, the folded line's bold 12, a loser's regular 13), which has no shadow.
 local function font(fs, role, size)
-    Th.ApplyFont(fs, role)
-    if size then
-        local path, _, flags = fs:GetFont()
-        if path then fs:SetFont(path, size, flags) end
-    end
+    Th.ApplyFont(fs, role, size)
 end
 
 -- A font string with its font set at once (the client refuses text before a font): one line, from the left.
@@ -129,12 +129,13 @@ local function classColor(file) return { Th.ClassColor(file) } end
 -- How wide a text is. Unbounded: the client holds GetStringWidth to the width a font string has.
 local function textWidth(fs) return fs:GetUnboundedStringWidth() end
 
--- Lays regions out left to right, `gap` px apart, the first `x` from the left of `anchor`, each centred on it.
-local function chain(list, anchor, x, gap)
+-- Lays regions out left to right, `gap` px apart, the first `x` from the left of `anchor`, each centred on it
+-- (`y` px above its middle).
+local function chain(list, anchor, x, gap, y)
     for i, region in ipairs(list) do
         region:ClearAllPoints()
         if i == 1 then
-            region:SetPoint("LEFT", anchor, "LEFT", x, 0)
+            region:SetPoint("LEFT", anchor, "LEFT", x, y or 0)
         else
             region:SetPoint("LEFT", list[i - 1], "RIGHT", gap, 0)
         end
@@ -454,7 +455,7 @@ local function newSummary(view, parent)
     sum.choosing = newText(sum, "pick")
     sum.absent = newText(sum, "pick")
     sum.chevron = W.Icon(sum, "chevron", SUM_CHEVRON, "faint")
-    sum.chevron:SetPoint("RIGHT", -ROW_PAD, 0)
+    sum.chevron:SetPoint("RIGHT", -ROW_PAD, SUM_MIDDLE)
     sum:SetScript("OnClick", function(self) listRest(view, self) end)
     sum:Hide()
     return sum
@@ -496,7 +497,7 @@ local function paintSummary(sum, rest)
     sum.choosing:SetText(choosing .. " " .. CHOOSING)
     sum.absent:SetText(absent .. " " .. ABSENT)
     for _, region in ipairs(list) do region:Show() end
-    chain(list, sum, ROW_PAD, SUM_GAP)
+    chain(list, sum, ROW_PAD, SUM_GAP, SUM_MIDDLE)
 end
 
 -------------------------------------------------------------------------------
@@ -632,7 +633,7 @@ local function paintBody(view, card, rows, awaits)
         for i, kind in ipairs(kinds) do
             local button = view.buttons[kind]
             button:ClearAllPoints()
-            button:SetPoint("TOPLEFT", PAD_X + (i - 1) * (width + BUTTON_GAP), -(y + BUTTONS_GAP))
+            button:SetPoint("TOPLEFT", PAD_X + (i - 1) * (width + BUTTON_GAP), -y)
             button:SetWidth(width)
             button:SetAllowed(allowed(card, kind))
             button:Show()
@@ -699,6 +700,7 @@ end
 local function paintFold(view, card, winner)
     view.foldIcon:SetItem(card.icon, card.quality)
     font(view.foldName, BOLD, FOLD_SIZE)
+    Th.Shadow(view.foldName, true) -- a name: the mockup's .result .in has the shadow
     view.foldName:SetText(card.name or "")
     paint(view.foldName, { Th.Quality(card.quality) })
     local who, result
@@ -716,6 +718,7 @@ local function paintFold(view, card, winner)
     view.foldWinner:SetShown(who ~= nil)
     if who then
         font(view.foldWinner, BOLD, FOLD_SIZE)
+        Th.Shadow(view.foldWinner, true)
         view.foldWinner:SetText(who[1])
         paint(view.foldWinner, who[2])
     end
@@ -844,7 +847,16 @@ local function newView(parent)
     local full = CreateFrame("Frame", nil, view)
     full:SetAllPoints()
     view.full = full
-    view.divider = W.Hair(full, "TOP", "hairSoft")
+    -- The hairline between this card and the one above it (.card's border-top) lies just above the card, one
+    -- physical pixel at the bottom of the 1 px the window leaves there; it goes with the whole card when it folds.
+    view.divider = full:CreateTexture(nil, "BORDER", nil, 1)
+    W.Paint(view.divider, function(line)
+        line:SetColorTexture(Th.Color("hairSoft"))
+        line:ClearAllPoints()
+        line:SetPoint("BOTTOMLEFT", view, "TOPLEFT")
+        line:SetPoint("BOTTOMRIGHT", view, "TOPRIGHT")
+        line:SetHeight(W.Pixel(view))
+    end)
     view.edge = W.Fill(full, "accent", "ARTWORK")
     view.edge:SetPoint("TOPLEFT")
     view.edge:SetPoint("BOTTOMLEFT")

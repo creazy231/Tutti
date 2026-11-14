@@ -38,12 +38,18 @@ local CLOSES_MARGIN = 3                                     -- .cl margin-right
 local BAR_ALPHA = 0.85                                      -- .cbar: the accent at 85 %
 local PAD_X = 10                                            -- .sec and .result padding
 local SEC_H, SEC_MIDDLE, SEC_GAP = 23, 14.65, 8             -- .sec: 1 + 7 + 13.3 + 2; its line's middle; gap
+local DIVIDER = 1                                           -- .card's border-top, above every card but the first
 local LAST_PAD = 2                                          -- .result:last-child padding-bottom
 local EMPTY_H, EMPTY_MIDDLE = 28, 12.35                     -- .hint: 5 + 14.7 + 8, its line's middle
 local MAX_SHARE = 0.7                                       -- the window's height, of the screen's
 local WHEEL = 40                                            -- px per wheel notch (Sotto's log)
 local THUMB_W, THUMB_MIN, THUMB_INSET = 2, 16, 3            -- Sotto's scroll thumb
 local NOTE_GAP = -4                                         -- Polestar's note under the window
+-- The drop shadow (.win's box-shadow 0 10px 28px rgba(0,0,0,.55); tools/make_media.py works it out): its alpha, the
+-- bands' reach past the sides, above and below, the side texture's two parts (under the top edge, above the bottom
+-- edge) and the share of its rows the upper part has.
+local DROP_ALPHA, DROP_SIDE, DROP_ABOVE, DROP_BELOW = 0.55, 40, 28, 52
+local DROP_TOP, DROP_BOTTOM, DROP_ROWS = 46, 26, 40 / 64
 
 -- Seconds.
 local FOLD_AFTER = 4
@@ -82,11 +88,7 @@ local applied = 1          -- the size last given to the window (a new frame's s
 -------------------------------------------------------------------------------
 -- Sets a font string's font: a theme role, or a role's file at a size the roles lack (the pill's bold 10.5).
 local function font(fs, role, size)
-    Th.ApplyFont(fs, role)
-    if size then
-        local path, _, flags = fs:GetFont()
-        if path then fs:SetFont(path, size, flags) end
-    end
+    Th.ApplyFont(fs, role, size)
 end
 
 -- A font string with its font set at once: the client refuses text before a font.
@@ -156,14 +158,68 @@ win:EnableMouse(true)
 if win.SetDontSavePosition then win:SetDontSavePosition(true) end -- Tutti keeps its own place
 win:Hide()
 
--- EllesmereUI's panel colour, a 1 px white-10 % hairline inside, a 1 px dark edge outside, a soft shadow.
+-- EllesmereUI's panel colour, a 1 px white-10 % hairline inside, a 1 px dark edge outside, the drop shadow.
 local ground = W.Fill(win, "bg", "BACKGROUND", -7)
 ground:SetAllPoints()
-W.Shadow(win, 16, 0.55)
 W.Outline(win, "edge")
 W.Border(win, "hair", "OVERLAY")
 
--- The header (.hd): the sky's gradient, a hairline at the bottom, and its items centred on the 31 px above it.
+-- The mockup's drop shadow: a box the window's size, 10 px lower, blurred by 14 px, drawn only outside the window
+-- (none under its 93 % ground). The bands above and below reach 40 px past the sides; each side has an upper and a
+-- lower part, where the blur turns round the corners, and between them its alike rows stretched (fitDrop).
+local function dropPiece(texture, flip)
+    local t = win:CreateTexture(nil, "BACKGROUND", nil, -8)
+    t:SetTexture(texture, "CLAMP", "CLAMP")
+    t:SetVertexColor(0, 0, 0, DROP_ALPHA)
+    t.flip = flip
+    return t
+end
+local drop = {
+    above = dropPiece(W.MEDIA .. "dropabove"), below = dropPiece(W.MEDIA .. "dropbelow"), sides = {},
+}
+win.drop = drop
+drop.above:SetPoint("BOTTOMLEFT", win, "TOPLEFT", -DROP_SIDE, 0)
+drop.above:SetPoint("BOTTOMRIGHT", win, "TOPRIGHT", DROP_SIDE, 0)
+drop.above:SetHeight(DROP_ABOVE)
+drop.below:SetPoint("TOPLEFT", win, "BOTTOMLEFT", -DROP_SIDE, 0)
+drop.below:SetPoint("TOPRIGHT", win, "BOTTOMRIGHT", DROP_SIDE, 0)
+drop.below:SetHeight(DROP_BELOW)
+for _, edge in ipairs({ "LEFT", "RIGHT" }) do
+    local out = edge == "LEFT" and "RIGHT" or "LEFT" -- the side's edge that touches the window
+    local flip = edge == "RIGHT" -- the right side is the left one, mirrored
+    local side = {
+        upper = dropPiece(W.MEDIA .. "dropside", flip), middle = dropPiece(W.MEDIA .. "dropside", flip),
+        lower = dropPiece(W.MEDIA .. "dropside", flip),
+    }
+    side.upper:SetPoint("TOP" .. out, win, "TOP" .. edge)
+    side.lower:SetPoint("BOTTOM" .. out, win, "BOTTOM" .. edge)
+    side.middle:SetPoint("TOP" .. out, side.upper, "BOTTOM" .. out)
+    side.middle:SetPoint("BOTTOM" .. out, side.lower, "TOP" .. out)
+    for _, part in pairs(side) do part:SetWidth(DROP_SIDE) end
+    drop.sides[edge] = side
+end
+
+-- The sides' parts for a window `height` high: a short one gives the upper and lower parts its height in their
+-- shares, cut from their textures where they meet the middle, which then has no height.
+local function fitDrop(height)
+    local upper, lower = DROP_TOP, DROP_BOTTOM
+    if height < upper + lower then
+        upper, lower = height * DROP_TOP / (DROP_TOP + DROP_BOTTOM), height * DROP_BOTTOM / (DROP_TOP + DROP_BOTTOM)
+    end
+    for _, side in pairs(drop.sides) do
+        local l, r = 0, 1
+        if side.upper.flip then l, r = 1, 0 end
+        side.upper:SetTexCoord(l, r, 0, DROP_ROWS * upper / DROP_TOP)
+        side.upper:SetHeight(upper)
+        side.middle:SetTexCoord(l, r, DROP_ROWS - 0.5 / 64, DROP_ROWS + 0.5 / 64)
+        side.lower:SetTexCoord(l, r, 1 - (1 - DROP_ROWS) * lower / DROP_BOTTOM, 1)
+        side.lower:SetHeight(lower)
+    end
+end
+
+-- The header (.hd): the sky's gradient over the 31 px above its hairline, its items centred on them. Under the
+-- hairline lies the gradient's first row again, the sky at 55 %, as the mockup's background (sized to the padding
+-- box and repeated) draws it there: the line under the header reads a little brighter than a plain hairline.
 local head = CreateFrame("Frame", nil, win)
 win.head = head
 head:SetPoint("TOPLEFT")
@@ -172,11 +228,21 @@ head:SetHeight(HEAD_H)
 head:EnableMouse(true)
 head:RegisterForDrag("LeftButton")
 local sky = head:CreateTexture(nil, "BACKGROUND", nil, 1)
-sky:SetAllPoints()
+head.sky = sky
+head.under = head:CreateTexture(nil, "BACKGROUND", nil, 1)
 W.Paint(sky, function(t)
     local r, g, b = Th.Color("sky")
+    local px = W.Pixel(head)
     t:SetColorTexture(1, 1, 1, 1)
     t:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.55))
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT")
+    t:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, px)
+    head.under:SetColorTexture(r, g, b, 0.55)
+    head.under:ClearAllPoints()
+    head.under:SetPoint("BOTTOMLEFT")
+    head.under:SetPoint("BOTTOMRIGHT")
+    head.under:SetHeight(px)
 end)
 head.hair = W.Hair(head, "BOTTOM")
 
@@ -330,8 +396,8 @@ local function scrollTo(offset)
     end
 end
 
--- Stacks the rolls: the whole cards in arrival order, then "DONE" and the folded lines, 2 px after the last.
--- -> their height
+-- Stacks the rolls: the whole cards in arrival order, a hairline between two (the card's divider, in the pixel
+-- left for it), then "DONE" and the folded lines, 2 px after the last. -> their height
 local function layoutRolls()
     local y, first, anyFolded = 0, true, false
     for _, card in ipairs(order) do
@@ -339,6 +405,7 @@ local function layoutRolls()
         if folded[card] then
             anyFolded = true
         else
+            if not first then y = y + DIVIDER end
             view:ClearAllPoints()
             view:SetPoint("TOPLEFT", rolls, "TOPLEFT", 0, -y)
             view.divider:SetShown(not first) -- no hairline between the header and the first card
@@ -400,6 +467,7 @@ local function relayout()
     content:SetHeight(contentHeight)
     scroll:SetHeight(visibleHeight)
     win:SetHeight(HEAD_H + visibleHeight)
+    fitDrop(HEAD_H + visibleHeight)
     scrollTo(scrolled())
 end
 
@@ -832,4 +900,5 @@ ns.Listen("DB_READY", function() place() end)
 ns.On("UI_SCALE_CHANGED", function() relayout() end)
 ns.On("DISPLAY_SIZE_CHANGED", function() relayout() end)
 
+fitDrop(HEAD_H)
 place()

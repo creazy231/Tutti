@@ -143,7 +143,7 @@ local function textColor(fs) return { fs:GetTextColor() } end
 -------------------------------------------------------------------------------
 --  The card awaiting the player
 -------------------------------------------------------------------------------
-T.it("awaiting the player: three buttons, five rows in party order, height 218 with the reason line", function()
+T.it("awaiting the player: three buttons, five rows in party order, height 217 with the reason line", function()
     local G, W, ns, window = setup()
     local view = roll(W, ns, window, { canNeed = false, reasonNeed = 1 })
     local b = view.buttons
@@ -152,15 +152,16 @@ T.it("awaiting the player: three buttons, five rows in party order, height 218 w
     T.eq(b.need:GetAlpha(), 0.38, "Need is greyed out")
     T.eq(column(view, function(r) return shown(W, r.name) end), "Orlen,Brisé,Corvel,Kestrel,Ayla",
         "the party in party-frame order, the player last")
-    T.eq(view:Height(), 9 + 34 + 16 + 31 + 16 + 5 * 21 + 7)
-    T.eq(view:Height(), 218)
-    T.eq(view:GetHeight(), 218, "the view is as high as it says")
+    T.eq(view:Height(), 9 + 34 + 16 + 30 + 16 + 5 * 21 + 7)
+    T.eq(view:Height(), 217)
+    T.eq(view:GetHeight(), 217, "the view is as high as it says")
     T.ok(view.reason:IsShown(), "the reason line")
     T.ok(view.edge:IsShown(), "the accent edge of a card that waits on the player")
     T.eq(view.edge:GetWidth(), 2)
-    T.eq(view.edge:GetHeight(), 218, "down the whole card")
+    T.eq(view.edge:GetHeight(), 217, "down the whole card")
 
-    -- The mockup's spacing: padding 9/10/7, icon 34, the bar 8 below it, the buttons 1 below its block.
+    -- The mockup's spacing: padding 9/10/7, icon 34, the bar 8 below it, the buttons right under its block (the
+    -- buttons' 1 px margin collapses into the bar's 6 px below it, as the mockup draws them).
     local top, left = view:GetTop(), view:GetLeft()
     T.eq(view.icon:GetLeft() - left, 10, "icon: 10 from the left")
     T.eq(top - view.icon:GetTop(), 9, "icon: 9 from the top")
@@ -170,17 +171,19 @@ T.it("awaiting the player: three buttons, five rows in party order, height 218 w
     same(view.track._color, 1, 1, 1, "the track is white")
     T.near(view.track._color[4], 0.08, 1e-9, "at 8 %")
     T.eq(view.track:GetWidth(), 280)
-    T.eq(top - b.need:GetTop(), 60, "the buttons 1 below the countdown's block")
+    T.eq(top - b.need:GetTop(), 59, "the buttons 6 below the bar")
     T.eq(b.need:GetLeft() - left, 10)
     T.near(b.pass:GetRight() - left, 290, 1e-6)
     T.near(b.need:GetWidth(), (280 - 8) / 3, 1e-6, "three equal buttons 4 px apart")
     T.near(b.greed:GetLeft() - b.need:GetRight(), 4, 1e-6)
-    T.eq(top - view.reason:GetTop(), 87, "the reason 3 into the buttons' block")
+    T.eq(top - view.reason:GetTop(), 86, "the reason 3 into the buttons' block")
     local rows = rowsOf(view)
-    T.eq(top - rows[1]:GetTop(), 106, "the rows under the reason")
+    T.eq(top - rows[1]:GetTop(), 105, "the rows under the reason")
     T.eq(rows[1]:GetHeight(), 21)
     T.eq(rows[1]:GetWidth(), 280)
-    T.eq(top - rows[5]:GetBottom(), 211, "7 under the last row")
+    T.eq(top - rows[5]:GetBottom(), 210, "7 under the last row")
+    T.near(view.time:GetLeft() - view.yours:GetRight(), 3.5, 1e-9,
+        "'Your pick', then a space (Expressway's, 3.5 px at 11) before '· 54s', as the mockup writes it")
 end)
 
 T.it("the rows follow the mockup's columns: class icon, name, pick 64 px, roll 38 px", function()
@@ -276,7 +279,7 @@ T.it("clicking Need picks need; a disallowed Need ignores the click and shows 'N
     local G, W, ns, window = setup()
     local view, card = roll(W, ns, window)
     T.no(view.reason:IsShown(), "no reason while Need is allowed")
-    T.eq(view:Height(), 9 + 34 + 16 + 31 + 5 * 21 + 7)
+    T.eq(view:Height(), 9 + 34 + 16 + 30 + 5 * 21 + 7)
     view.buttons.need:Click()
     T.eq(#W.rolled, 1, "one roll")
     T.eq(W.rolled[1][1], 7)
@@ -633,6 +636,29 @@ T.it("a late decision that arrives while the card is folded plays when the card 
     T.no(view.ring:IsShown())
 end)
 
+T.it("names carry the mockup's text shadow, 1 px under them; the subtitle, picks and numbers have none", function()
+    local G, W, ns, window = setup()
+    local view, card = roll(W, ns, window)
+    view.buttons.need:Click()
+    W.setDrop(9, 7, decided(G, W, { pick(G, ORLEN, "NeedMainSpec", 19, true), pick(G, AYLA, "NeedMainSpec", 7) },
+        ORLEN, 19))
+    local function shadow(fs)
+        local _, y = fs:GetShadowOffset()
+        return y == -1 and select(4, fs:GetShadowColor()) == 0.6
+    end
+    local winner = rowsOf(view)[1]
+    T.ok(shadow(view.name), "the item's name")
+    T.ok(shadow(winner.name), "a player's name")
+    T.ok(shadow(rowsOf(view)[5].you), "the YOU tag, inside the name's shadow in the mockup")
+    T.no(shadow(view.parts[1]), "the winner's name in the subtitle (.won)")
+    T.no(shadow(view.parts[2]), "the subtitle")
+    T.no(shadow(winner.word), "the pick")
+    T.no(shadow(winner.roll), "the number")
+    view:SetFolded(true)
+    T.ok(shadow(view.foldName) and shadow(view.foldWinner), "the folded line's name and winner (.result .ts)")
+    T.no(shadow(view.foldResult), "and not its 'Need 19'")
+end)
+
 T.it("a view is built in its parent: its hairlines are one physical pixel at any UI scale", function()
     local G, W, ns, window = setup()
     G.UIParent:SetScale(0.5)
@@ -757,6 +783,13 @@ T.it("raid: only need/greed rows plus the player, then '13 passed · 2 choosing'
     T.eq(view:GetHeight(), view:Height())
     T.eq(sum:GetHeight(), 22)
     T.eq(view:GetTop() - sum:GetTop(), 9 + 34 + 16 + 5 * 21 + 2, "2 under the rows")
+    -- .sum has a 1 px border-top: its items are centred on the 21 px under it, 11.5 px down, not on all 22.
+    local _, middle = sum.passIcon:GetCenter()
+    T.near(sum:GetTop() - middle, 11.5, 1e-9, "the Pass glyph on the 21 px under the hairline")
+    _, middle = sum.choosing:GetCenter()
+    T.near(sum:GetTop() - middle, 11.5, 1e-9, "the words too")
+    _, middle = sum.chevron:GetCenter()
+    T.near(sum:GetTop() - middle, 11.5, 1e-9, "and the chevron")
     sum:Click()
     local menu = ns.W.CurrentMenu()
     T.ok(menu and menu:IsShown(), "clicking lists the rest")
@@ -905,6 +938,11 @@ end)
 T.it("a pooled view comes back with its hairline, which the window hides on the first card only", function()
     local G, W, ns, window = setup()
     local view = roll(W, ns, window)
+    -- .card's border-top: one pixel just above the card, where the window leaves a pixel between two cards.
+    T.eq(view.divider:GetBottom(), view:GetTop(), "the hairline lies just above the card")
+    T.eq(view.divider:GetLeft(), view:GetLeft())
+    T.eq(view.divider:GetWidth(), 300)
+    T.near(view.divider:GetHeight(), ns.W.Pixel(view), 1e-9)
     view.divider:Hide()
     ns.Card.Release(view)
     local again = ns.Card.Acquire(window)

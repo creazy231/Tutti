@@ -133,10 +133,11 @@ local function same(c, expected, msg)
     T.near(c[3], expected[3], 1e-6, (msg or "colour") .. " blue")
 end
 
--- How high the window's cards are, together (the card decides its own height: view:Height()).
+-- How high the window's whole cards are, stacked (the card decides its own height: view:Height()), with the 1 px
+-- hairline between two.
 local function heights(win, cards)
     local sum = 0
-    for _, card in ipairs(cards) do sum = sum + win.views[card]:Height() end
+    for i, card in ipairs(cards) do sum = sum + win.views[card]:Height() + (i > 1 and 1 or 0) end
     return sum
 end
 
@@ -186,10 +187,13 @@ T.it("cards stack in arrival order and the pill counts live cards", function()
     W.advance(0.35)
     local va, vb, vc = win.views[a], win.views[b], win.views[c]
     T.eq(at(W, win, va), 32, "the first card right under the header")
-    T.eq(at(W, win, vb), 32 + va:Height(), "the second under it")
-    T.eq(at(W, win, vc), 32 + va:Height() + vb:Height(), "the third last: the order they came in")
+    T.eq(at(W, win, vb), 32 + va:Height() + 1, "the second under it, a pixel down for the hairline")
+    T.eq(at(W, win, vc), 32 + va:Height() + vb:Height() + 2, "the third last: the order they came in")
     T.no(va.divider:IsShown(), "no hairline between the header and the first card")
     T.ok(vb.divider:IsShown() and vc.divider:IsShown(), "a hairline above the others")
+    local _, dy, _, dh = box(W, win, vb.divider)
+    T.near(dy + dh, 32 + va:Height() + 1, 1e-9, "the hairline in the pixel between two cards (.card's border-top)")
+    T.ok(dy >= 32 + va:Height() - 1e-9, "not over the card above")
     T.eq(win:GetHeight(), 32 + heights(win, { a, b, c }))
     T.eq(text(W, win.head.count), "3", "three live cards")
     local before = vb:Height()
@@ -197,7 +201,7 @@ T.it("cards stack in arrival order and the pill counts live cards", function()
     decide(G, W, 2, ORLEN, 19)
     T.eq(text(W, win.head.count), "2", "a decided card is not counted")
     T.ok(vb:Height() < before, "the decided card lost its buttons")
-    T.eq(at(W, win, vc), 32 + va:Height() + vb:Height(), "and the next one moved up")
+    T.eq(at(W, win, vc), 32 + va:Height() + vb:Height() + 2, "and the next one moved up")
     va.buttons.pass:Click()
     vc.buttons.pass:Click()
     decide(G, W, 1, ORLEN, 20)
@@ -211,6 +215,18 @@ T.it("the header follows the mockup: mark, title, pill, buttons and the line und
     W.advance(0.35)
     local head = win.head
     T.eq(head:GetHeight(), 32)
+    -- The sky's gradient over the 31 px above the hairline, and the sky at 55 % under the hairline, as the
+    -- mockup's repeating background draws it: the line under the header is the mockup's #363636, not #2c2c2c.
+    local px = ns.W.Pixel(head)
+    local _, sy, _, sh = box(W, win, head.sky)
+    T.eq(sy, 0)
+    T.near(sh, 32 - px, 1e-9, "the gradient ends on the hairline")
+    local _, uy, uw, uh = box(W, win, head.under)
+    T.near(uy, 32 - px, 1e-9, "under the hairline")
+    T.near(uh, px, 1e-9)
+    T.eq(uw, 300)
+    same(head.under._color, { ns.Theme.Color("sky") }, "the sky")
+    T.near(head.under._color[4], 0.55, 1e-9, "at 55 %, the gradient's top")
     local x, y, w, h = box(W, win, head.mark)
     T.eq(x, 10, "the mark 10 px in")
     T.eq(w, 15)
@@ -245,6 +261,52 @@ T.it("the header follows the mockup: mark, title, pill, buttons and the line und
     local c = head.bar._color
     same(c, { r, g, b }, "the accent")
     T.near(c[4], 0.85, 1e-6, "at 85 %")
+end)
+
+T.it("the mockup's drop shadow lies round the window, never under it, its sides fitted to its height", function()
+    local G, W, ns, win = setup()
+    local drop = win.drop
+    local function rect(region) -- left, top, right, bottom in window coordinates (y down from the window's top)
+        local x, y, w, h = box(W, win, region)
+        return x, y, x + w, y + h
+    end
+    local function tint(region)
+        local r, g, b, a = region:GetVertexColor()
+        T.eq(r + g + b, 0, "black")
+        T.near(a, 0.55, 1e-9, "at 55 %")
+    end
+    roll(W, ns, 1)
+    W.advance(0.35)
+    local height = win:GetHeight()
+    local l, t, r, b = rect(drop.above)
+    T.eq(l, -40); T.eq(r, 340); T.eq(t, -28); T.eq(b, 0, "the band above: 28 px, 40 px past either side")
+    tint(drop.above)
+    l, t, r, b = rect(drop.below)
+    T.eq(l, -40); T.eq(r, 340); T.eq(t, height); T.eq(b, height + 52, "the band below: 52 px")
+    tint(drop.below)
+    for edge, side in pairs(drop.sides) do
+        l, t, r, b = rect(side.upper)
+        T.eq(r - l, 40, edge .. ": 40 px wide")
+        T.eq(edge == "LEFT" and r or l, edge == "LEFT" and 0 or 300, edge .. ": against the window")
+        T.eq(t, 0); T.eq(b, 46, edge .. ": the upper part, under the top edge")
+        local _, mt, _, mb = rect(side.middle)
+        T.eq(mt, 46); T.eq(mb, height - 26, edge .. ": the middle, stretched")
+        local _, lt, _, lb = rect(side.lower)
+        T.eq(lt, height - 26); T.eq(lb, height, edge .. ": the lower part, above the bottom edge")
+        tint(side.middle)
+        local ul, ur = side.upper:GetTexCoord()
+        T.eq(ul > ur, edge == "RIGHT", edge .. ": the right side is the left one, mirrored")
+    end
+    -- A window shorter than the two parts (the rolls view without cards) gives them its height in their shares.
+    local G2, W2, ns2, win2 = setup()
+    ns2.UI.Open("rolls")
+    W2.advance(0.35)
+    T.eq(win2:GetHeight(), 32 + 28)
+    local side = win2.drop.sides.LEFT
+    T.near(side.upper:GetHeight(), 60 * 46 / 72, 1e-9)
+    T.near(side.lower:GetHeight(), 60 * 26 / 72, 1e-9)
+    local _, _, _, cut = side.upper:GetTexCoord()
+    T.near(cut, 40 / 64 * (60 / 72), 1e-9, "the upper part cut where it meets the middle")
 end)
 
 -------------------------------------------------------------------------------
@@ -739,9 +801,9 @@ T.it("a group change redraws every card and the window's height", function()
     table.remove(four, 4)
     W.setGroup(four)
     T.eq(win.views[a]:Height(), five - 21, "one row of 21 px less")
-    T.eq(at(W, win, win.views[b]), 32 + five - 21)
+    T.eq(at(W, win, win.views[b]), 32 + five - 21 + 1)
     T.eq(win:GetHeight(), 32 + heights(win, { a, b }))
-    T.eq(win:GetHeight(), 32 + 2 * (five - 21))
+    T.eq(win:GetHeight(), 32 + 2 * (five - 21) + 1)
 end)
 
 T.it("Polestar's note sits under the window while both show", function()
@@ -886,7 +948,7 @@ T.it("a waiting card already whole in sight is not scrolled to", function()
     roll(W, ns, 3) -- more than the window holds now
     T.ok(win.content:GetHeight() > win.scroll:GetHeight(), "the rolls can scroll")
     T.eq(win.scroll:GetVerticalScroll(), 0, "nothing moves under the mouse")
-    T.eq(at(W, win, win.views[b]), 32 + win.views[a]:Height())
+    T.eq(at(W, win, win.views[b]), 32 + win.views[a]:Height() + 1)
 end)
 
 T.it("only a wheel that moves the rolls stops them coming into sight by themselves", function()

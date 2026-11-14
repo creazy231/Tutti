@@ -18,6 +18,8 @@ Where the shapes come from:
   unchanged.
 - wash, shine and ring are the effect textures; their docstrings say how the
   code is meant to show them. The shine is the mockup's CSS gradient.
+- dropabove, dropbelow and dropside are the window's drop shadow, the mockup's
+  CSS box-shadow worked out (see DROP_W).
 """
 import math
 import os
@@ -304,6 +306,61 @@ def shadow_tex(size=64, edge=16):
     return out
 
 
+# The window's drop shadow, the mockup's box-shadow 0 10px 28px rgba(0,0,0,.55): a box the window's size (300 px
+# wide), 10 px lower, blurred by a Gaussian of 14 px (CSS takes half the blur as the deviation), drawn only outside
+# the window. The code tints the three textures black at 55 % and lays them round the window: the band above
+# (40 px past either side, 28 px high), the band below (52 px), and the sides, the left one mirrored for the right.
+# x and y are px from the window's top-left corner, y down; `drop_below` and the side's lower part measure y from
+# its bottom edge instead.
+DROP_W, DROP_SIGMA, DROP_DOWN = 300, 14.0, 10.0
+DROP_SIDE, DROP_ABOVE, DROP_BELOW = 40, 28, 52
+DROP_TOP, DROP_BOTTOM = 46, 26  # the side's own parts: under the top edge, above the bottom edge
+
+
+def phi(t):
+    return 0.5 * (1 + math.erf(t / math.sqrt(2)))
+
+
+def drop_across(x):
+    return phi(x / DROP_SIGMA) - phi((x - DROP_W) / DROP_SIGMA)
+
+
+def black_tex(w, h, alpha):
+    """Black texture whose opacity at texel (i, j) is alpha(i, j), 0..1."""
+    a = Image.new("L", (w, h))
+    a.putdata([round(255 * min(1.0, max(0.0, alpha(i, j)))) for j in range(h) for i in range(w)])
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.putalpha(a)
+    return out
+
+
+def dropabove_tex(w=256, h=16):
+    """The band above the window: x from -40 to 340 px, y from -28 px to its top edge."""
+    span = DROP_W + 2 * DROP_SIDE
+    return black_tex(w, h, lambda i, j: drop_across(-DROP_SIDE + (i + 0.5) * span / w)
+                     * phi((-DROP_ABOVE + (j + 0.5) * DROP_ABOVE / h - DROP_DOWN) / DROP_SIGMA))
+
+
+def dropbelow_tex(w=256, h=32):
+    """The band below the window: x from -40 to 340 px, from its bottom edge 52 px down."""
+    span = DROP_W + 2 * DROP_SIDE
+    return black_tex(w, h, lambda i, j: drop_across(-DROP_SIDE + (i + 0.5) * span / w)
+                     * phi((DROP_DOWN - (j + 0.5) * DROP_BELOW / h) / DROP_SIGMA))
+
+
+def dropside_tex(w=32, h=64, top_rows=40):
+    """The left side, 40 px out from the window's edge: rows 0-39 the 46 px under the top edge, rows 40-63 the
+    26 px above the bottom edge. Between the two parts every row is the same, so the code stretches the rows where
+    they meet over the rest of the window's height."""
+    def alpha(i, j):
+        across = phi((-DROP_SIDE + (i + 0.5) * DROP_SIDE / w) / DROP_SIGMA)
+        if j < top_rows:
+            return across * phi(((j + 0.5) * DROP_TOP / top_rows - DROP_DOWN) / DROP_SIGMA)
+        up = DROP_BOTTOM - (j - top_rows + 0.5) * DROP_BOTTOM / (h - top_rows)  # px above the bottom edge
+        return across * phi((DROP_DOWN + up) / DROP_SIGMA)
+    return black_tex(w, h, alpha)
+
+
 def alpha_tex(w, h, alpha):
     """White texture whose opacity at pixel (x, y) is alpha(x, y), 0..1."""
     a = Image.new("L", (w, h))
@@ -379,6 +436,7 @@ def main():
     shapes = {
         "mark": g_mark, "circle": circle_tex, "pill": pill_tex, "shadow": shadow_tex,
         "wash": wash_tex, "shine": shine_tex, "ring": ring_tex,
+        "dropabove": dropabove_tex, "dropbelow": dropbelow_tex, "dropside": dropside_tex,
     }
     for name, fn in shapes.items():
         fn().save(os.path.join(media, name + ".tga"))

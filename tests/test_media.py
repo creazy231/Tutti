@@ -1,7 +1,7 @@
 """Checks the generated media: every texture the code or the TOC names exists, every texture
-is an uncompressed 32-bit TGA with power-of-two sides (white on transparent, the shadow black,
-so code can tint it), every glyph and shape the plan promises is there at its size, and the
-chime is a real Ogg Vorbis file.
+is an uncompressed 32-bit TGA with power-of-two sides (white on transparent, the shadows black,
+so code can tint them), every glyph and shape the plan promises is there at its size, the window's
+drop shadow fades out away from the window, and the chime is a real Ogg Vorbis file.
 Run from the addon folder: python3 -I tests/test_media.py
 """
 import math
@@ -24,7 +24,9 @@ REQUIRED = {"Icons/" + name: (32, 32) for name in GLYPHS}
 REQUIRED.update({
     "mark": (64, 64), "circle": (64, 64), "pill": (64, 32), "shadow": (64, 64),
     "wash": (128, 16), "shine": (64, 64), "ring": (64, 64),
+    "dropabove": (256, 16), "dropbelow": (256, 32), "dropside": (32, 64),
 })
+SHADOWS = ("shadow", "dropabove", "dropbelow", "dropside")  # black, tinted in code
 CHIME = "Sounds/chime.ogg"
 
 
@@ -116,11 +118,18 @@ def check_tga(path):
     except Exception as e:
         problems.append(f"{path}: cannot be read ({e})")
         return
-    colour = 0 if rel == "shadow" else 255
+    colour = 0 if rel in SHADOWS else 255
     if im.mode != "RGBA" or any(ch.getextrema() != (colour, colour) for ch in im.split()[:3]):
-        problems.append(f"{path}: not {'black' if rel == 'shadow' else 'white'} on transparent")
+        problems.append(f"{path}: not {'black' if rel in SHADOWS else 'white'} on transparent")
         return
     alpha = im.getchannel("A")
+    if rel.startswith("drop"):
+        # The window's drop shadow: darkest where it meets the window, gone at its far edge.
+        near, far = {"dropabove": ((w // 2, h - 1), (w // 2, 0)), "dropbelow": ((w // 2, 0), (w // 2, h - 1)),
+                     "dropside": ((w - 1, h // 2), (0, h // 2))}[rel]
+        if alpha.getpixel(near) < 40 or alpha.getpixel(far) > 4:
+            problems.append(f"{path}: the drop shadow must be dark at the window and fade out away from it")
+        return
     edges = ((0, 0, w, 1), (0, h - 1, w, h), (0, 0, 1, h), (w - 1, 0, w, h))
     solid = alpha.point(lambda v: 255 if v >= 128 else 0).getbbox()
     if solid is None:

@@ -213,15 +213,28 @@ function Th.Font(role)
     return fonts[spec[1]], spec[2], ""
 end
 
--- Font, no outline, a 1 px shadow (EllesmereUI's no-outline look). A bold
--- file the client cannot load falls back to the regular font.
-function Th.ApplyFont(fs, role)
-    local path, size, flags = Th.Font(role)
+-- The roles whose text carries the mockup's shadow (.ts): the window's title,
+-- an item's name, a player's name and the YOU tag after it. Other text has none.
+local SHADOWED = { title = true, item = true, row = true, you = true }
+
+-- A 1 px shadow straight under the text, black at 60 % (the mockup's
+-- text-shadow: 0 1px 0 rgba(0,0,0,.6)), or none.
+function Th.Shadow(fs, on)
+    fs:SetShadowOffset(0, on and -1 or 0)
+    fs:SetShadowColor(0, 0, 0, on and 0.6 or 0)
+end
+
+-- Font, no outline (EllesmereUI's no-outline look), and the shadow where its
+-- role has one. `size`, given, is a size the roles lack: the role's file at
+-- that size, a detail without the role's shadow (a subtitle's bold 11, the
+-- count pill). A bold file the client cannot load falls back to the regular font.
+function Th.ApplyFont(fs, role, size)
+    local path, own, flags = Th.Font(role)
+    size = size or own
     if not fs:SetFont(path, size, flags) then
         if not fs:SetFont(fonts.regular, size, flags) then fs:SetFont(REGULAR_FALLBACK, size, flags) end
     end
-    fs:SetShadowOffset(1, -1)
-    fs:SetShadowColor(0, 0, 0, 0.6)
+    Th.Shadow(fs, SHADOWED[role] == true and size == own)
 end
 
 -------------------------------------------------------------------------------

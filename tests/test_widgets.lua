@@ -218,6 +218,27 @@ T.it("a fill, a hairline or a glyph takes a colour of its own and keeps it throu
     same(fill._color, ns.Theme.Color("accent"))
 end)
 
+T.it("a border's sides run between its top and bottom lines: a translucent colour once at each corner", function()
+    local G, W, ns, Wd, parent = load()
+    local px = Wd.Pixel(parent)
+    local top, bottom, left, right = unpack(Wd.Border(parent, "hair"))
+    local frame = W.rect(parent)
+    for name, line in pairs({ top = top, bottom = bottom }) do
+        local r = W.rect(line)
+        T.eq(r[1], frame[1], name .. " line from the left edge")
+        T.eq(r[3], 300, name .. " line to the right edge")
+        T.near(r[4], px, 1e-9, name .. " line one pixel high")
+    end
+    for name, line in pairs({ left = left, right = right }) do
+        local r = W.rect(line)
+        T.near(r[2], frame[2] + px, 1e-9, name .. " side starts above the bottom line")
+        T.near(r[2] + r[4], frame[2] + 200 - px, 1e-9, name .. " side ends under the top line")
+        T.near(r[3], px, 1e-9, name .. " side one pixel wide")
+    end
+    T.eq(W.rect(left)[1], frame[1], "the left side on the left edge")
+    T.near(W.rect(right)[1] + px, frame[1] + 300, 1e-9, "the right side on the right edge")
+end)
+
 -------------------------------------------------------------------------------
 --  The roll button
 -------------------------------------------------------------------------------

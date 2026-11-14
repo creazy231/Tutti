@@ -114,6 +114,41 @@ T.it("ApplyFont sets the role's font", function()
     T.eq(size, 13)
 end)
 
+T.it("titles and names have the mockup's text shadow, 1 px under them; other text and odd sizes have none", function()
+    local G, W, ns = T.load({ eui = { font = EUI_FONTS .. "Expressway.TTF" } })
+    local function shadow(role, size)
+        local fs = G.UIParent:CreateFontString()
+        ns.Theme.ApplyFont(fs, role, size)
+        local x, y = fs:GetShadowOffset()
+        local _, _, _, a = fs:GetShadowColor()
+        return x, y, a, fs
+    end
+    -- The mockup's .ts (text-shadow: 0 1px 0 rgba(0,0,0,.6)): the title, item names, player names and their YOU tag.
+    for _, role in ipairs({ "title", "item", "row", "you" }) do
+        local x, y, a = shadow(role)
+        T.eq(x, 0, role .. ": straight under the text")
+        T.eq(y, -1, role .. ": 1 px down")
+        T.near(a, 0.6, 1e-9, role .. ": black at 60 %")
+    end
+    for _, role in ipairs({ "sub", "pick", "roll", "button", "fold", "section", "small" }) do
+        local _, _, a = shadow(role)
+        T.eq(a, 0, role .. ": no shadow")
+    end
+    -- A size the roles lack is a detail: the subtitle's bold 11, the count pill's 10.5.
+    local _, _, a, fs = shadow("item", 11)
+    T.eq(a, 0, "the item role's bold file at 11 has none")
+    local path, size = fs:GetFont()
+    T.eq(path, EUI_FONTS .. "Expressway Bold.ttf", "the role's file")
+    T.eq(size, 11, "at the size asked for")
+    T.near(select(3, shadow("item", 13.5)), 0.6, 1e-9, "the role's own size given as a size keeps it")
+    -- Th.Shadow puts it on or takes it off.
+    ns.Theme.Shadow(fs, true)
+    T.eq(select(2, fs:GetShadowOffset()), -1)
+    T.near(select(4, fs:GetShadowColor()), 0.6, 1e-9)
+    ns.Theme.Shadow(fs, false)
+    T.eq(select(4, fs:GetShadowColor()), 0)
+end)
+
 T.it("ApplyFont falls back to the regular font when the bold file is missing", function()
     local G, W, ns = T.load({ eui = { font = EUI_FONTS .. "Expressway.TTF" },
         setup = function(G, W) W.missingFonts = { [EUI_FONTS .. "Expressway Bold.ttf"] = true } end })

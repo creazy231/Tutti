@@ -5,11 +5,12 @@
 --  the settings view (switch, segmented choice, dropdown + menu, slider), and
 --  at the end Tutti's own: the class icon, the item icon and the roll button.
 --  Everything down to "Class icons" is Sotto's UI/Widgets.lua, with Tutti's
---  media folder and menu name, and three changes: wherever a colour name is
+--  media folder and menu name, and four changes: wherever a colour name is
 --  taken, a colour of one's own, { r, g, b [, a] }, is taken as well; a text
---  takes a size its role lacks (the role's file at that size); and the
---  segmented choice, the dropdown and the slider are cut to Tutti's approved
---  mockup (.segc, .dd, .sl), the slider showing its value in the caller's format.
+--  takes a size its role lacks (the role's file at that size); the segmented
+--  choice, the dropdown and the slider are cut to Tutti's approved mockup
+--  (.segc, .dd, .sl), the slider showing its value in the caller's format; and
+--  a border's sides run between its top and bottom lines (one colour a corner).
 -------------------------------------------------------------------------------
 local _, ns = ...
 local W = {}
@@ -125,11 +126,24 @@ function W.Outline(frame, colorName)
     return lines
 end
 
--- Four hairlines just inside the frame's edges.
+-- Four hairlines just inside the frame's edges. The sides run between the top and bottom lines, one physical pixel
+-- in at either end, so a translucent colour is laid once at the corners, as the mockup's inset box-shadow draws it.
 function W.Border(frame, colorName, layer)
+    local function side(edge)
+        local t = frame:CreateTexture(nil, layer or "BORDER", nil, 1)
+        fillColor[t] = colorName or "hair"
+        return W.Paint(t, function(tex)
+            tex:SetColorTexture(color(fillColor[tex]))
+            local px = W.Pixel(frame)
+            tex:ClearAllPoints()
+            tex:SetPoint("TOP" .. edge, frame, "TOP" .. edge, 0, -px)
+            tex:SetPoint("BOTTOM" .. edge, frame, "BOTTOM" .. edge, 0, px)
+            tex:SetWidth(px)
+        end)
+    end
     return {
         W.Hair(frame, "TOP", colorName, 0, 0, layer), W.Hair(frame, "BOTTOM", colorName, 0, 0, layer),
-        W.Hair(frame, "LEFT", colorName, 0, 0, layer), W.Hair(frame, "RIGHT", colorName, 0, 0, layer),
+        side("LEFT"), side("RIGHT"),
     }
 end
 
@@ -139,12 +153,7 @@ local textSize = setmetatable({}, { __mode = "k" })
 
 -- The role's font, at the text's own size when it has one: the role's file (its weight) at that size.
 local function applyFont(fs)
-    ns.Theme.ApplyFont(fs, textRole[fs])
-    local size = textSize[fs]
-    if size then
-        local path, _, flags = fs:GetFont()
-        if path then fs:SetFont(path, size, flags) end
-    end
+    ns.Theme.ApplyFont(fs, textRole[fs], textSize[fs])
 end
 
 -- size: px, for a size the theme's roles lack (bold 11, regular 12.5); nil for the role's own.
