@@ -20,7 +20,10 @@ sibling of Sotto, with the same foundations. Author for anything public: creazy2
   accent. The page expects next to it: `media/` (`python3 -I tools/tga2png.py <dir>`),
   `fonts/expressway.ttf` and `fonts/expressway-bold.ttf` (the tool also measures text with them),
   `class/class-<class>.png`, `icons/<key>.png` (axe gloves treads orb robes rope grips) and
-  `backdrop.jpg` (all from `docs/mockup/assets`). Serve the dir over http; `?shot=1&scale=2&bg=<image>`
+  `backdrop.jpg`, all from `docs/mockup/assets`, some renamed: `icon-dualblade.png` is
+  `icons/axe.png`, `icon-shapers.png` is `icons/gloves.png`, the other `icon-<key>.png` are
+  `icons/<key>.png`, and `bd-dalaran.jpg` is `backdrop.jpg` (private: only for comparing with the
+  mockup, never in a public image). Serve the dir over http; `?shot=1&scale=2&bg=<image>`
   frames the window for listing shots. Compare with the mockup in the same state (its `#<state>`
   hash) with headless Chrome at 2x; keep the renders out of the repo.
 - Public images (the listing, GIFs): R30's made-up cast (the player Maelis Ashvale, Orlen

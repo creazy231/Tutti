@@ -663,8 +663,9 @@ T.it("many cards: height capped at 70 % and scrolling", function()
     T.eq(win.scroll:GetVerticalScroll(), 0)
 end)
 
--- A card whose Need is refused: the reason under its buttons makes it 218 px, more than a scale of 1.3 leaves
--- room for under two cards the player has rolled on (2 × 171 + 218 > 549.5).
+-- A card whose Need is refused: the reason under its buttons makes it 217 px. Under two cards the player has rolled
+-- on, with the 1 px before each card but the first, it is more than a scale of 1.3 leaves room for
+-- (2 × 171 + 217 + 2 > 549.5).
 local REFUSED = { canNeed = false, reasonNeed = 1 }
 
 -- Whether a card shows whole between the header and the window's bottom.
