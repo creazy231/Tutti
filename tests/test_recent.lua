@@ -371,3 +371,49 @@ T.it("a damaged result neither stops the list nor its ticking", function()
     T.eq(#errors, 0, "and the ages tick on")
     T.eq(text(W, shownLines(view)[3].name), "Cartilage Shapers", "the good results are all there")
 end)
+
+-------------------------------------------------------------------------------
+--  The final review's minors (items 6 and 7)
+-------------------------------------------------------------------------------
+T.it("a stack shows its count on the line's icon (final review, item 6)", function()
+    local G, W, ns, win = setup()
+    local gloves = session(G, ns)
+    gloves.count = 3
+    local view = open(W, ns)
+    local lines = shownLines(view)
+    T.ok(lines[1].icon.count:IsShown())
+    T.eq(lines[1].icon.count:GetText(), "3")
+    T.eq(select(2, lines[1].icon.count:GetFont()), 10)
+    T.no(lines[2].icon.count:IsShown(), "a result without a count, as an older one has, shows none")
+    -- A damaged count shows none either.
+    gloves.count = "lots"
+    ns.Fire("HISTORY_CHANGED")
+    T.no(shownLines(view)[1].icon.count:IsShown())
+end)
+
+T.it("a result of /tutti demo says DEMO before its age (final review, item 7)", function()
+    local G, W, ns, win = setup()
+    local gloves, treads = session(G, ns)
+    gloves.demo = true
+    local view = open(W, ns)
+    local lines = shownLines(view)
+    local demo, real = lines[1], lines[2]
+    T.eq(text(W, demo.demo), "DEMO", "the demo's result is marked")
+    same(color(demo.demo), { ns.Theme.Color("muted") }, "muted")
+    T.eq(select(2, demo.demo:GetFont()), 9.5, "small, as the section labels")
+    local ax = box(W, win, demo.age)
+    local tx, _, tw = box(W, win, demo.demo)
+    T.near(tx + tw, ax - 8, 1e-6, "8 px before the age")
+    local _, ty, _, th = box(W, win, demo.demo)
+    local _, ay, _, ah = box(W, win, demo.age)
+    T.near(ty + th / 2, ay + ah / 2, 1e-6, "on the age's line")
+    local nx, _, nw = box(W, win, demo.name)
+    T.near(nx + nw, tx - 8, 1e-6, "the name ends 8 px before the tag")
+    T.eq(text(W, real.demo), "", "a real result has no tag")
+    local rx, _, rw = box(W, win, real.name)
+    T.near(rx + rw, box(W, win, real.age) - 8, 1e-6, "and its name runs to 8 px before its age")
+    -- A line handed to another result loses the tag.
+    gloves.demo = nil
+    ns.Fire("HISTORY_CHANGED")
+    T.eq(text(W, shownLines(view)[1].demo), "")
+end)

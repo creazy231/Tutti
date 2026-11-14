@@ -371,6 +371,18 @@ T.it("the head: icon, name in the quality colour, '<label> · ilvl <n>' and 'You
     T.eq(shown(W, view.time), "60s")
 end)
 
+T.it("a stack shows its count on the item icon; one item shows none (final review, item 6)", function()
+    local G, W, ns, window = setup()
+    local view = roll(W, ns, window, { count = 2 })
+    T.ok(view.icon.count:IsShown())
+    T.eq(view.icon.count:GetText(), "2")
+    T.eq(select(2, view.icon.count:GetFont()), 11)
+    T.eq(view.foldIcon.count, nil, "the folded line's small icon has no count")
+    W.addRoll(8, axeSpec(W))
+    local single = show(ns, window, ns.Rolls.Cards()[2])
+    T.no(single.icon.count:IsShown(), "a single item has no count")
+end)
+
 T.it("Tick counts the seconds and the bar down", function()
     local G, W, ns, window = setup()
     local view = roll(W, ns, window)

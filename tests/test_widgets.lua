@@ -518,6 +518,39 @@ T.it("item icon: a black rim one physical pixel outside, 1 px edge lines above t
     T.eq(small:GetWidth(), 26, "any size")
 end)
 
+T.it("item icon: a stack count in the bottom-right corner, shown above 1 (final review, item 6)", function()
+    local G, W, ns, Wd, parent = load()
+    local icon = Wd.ItemIcon(parent, 34, 11)
+    T.no(icon.count:IsShown(), "no count before an item")
+    icon:SetItem(135349, 3, 2)
+    T.ok(icon.count:IsShown())
+    T.eq(icon.count:GetText(), "2", "\"2\", as Blizzard's popup shows it")
+    local path, size, flags = icon.count:GetFont()
+    T.eq(path, (ns.Theme.Font("item")), "the bold file")
+    T.eq(size, 11)
+    T.eq(flags, "OUTLINE", "outlined, to read on any picture")
+    T.eq(select(2, icon.count:GetDrawLayer()), 7, "over the edge lines")
+    T.eq(icon.count:GetDrawLayer(), "OVERLAY")
+    local point, rel, relPoint, x, y = icon.count:GetPoint(1)
+    T.eq(point, "BOTTOMRIGHT")
+    T.eq(rel, icon)
+    T.eq(relPoint, "BOTTOMRIGHT")
+    T.eq(x, -2)
+    T.eq(y, 2)
+    icon:SetItem(135349, 3, 20)
+    T.eq(icon.count:GetText(), "20")
+    for _, one in ipairs({ 1, 0, -3, nil, "2", T.secret(2), 0 / 0, math.huge, {} }) do
+        icon:SetItem(135349, 3, 2)
+        icon:SetItem(135349, 3, one)
+        T.no(icon.count:IsShown(), "no count for " .. tostring(one))
+    end
+    icon:SetItem(135349, 3, 2.7)
+    T.eq(icon.count:GetText(), "2", "whole")
+    ns.Fire("LOOKS_CHANGED")
+    T.eq(select(3, icon.count:GetFont()), "OUTLINE", "kept through a repaint")
+    T.eq(Wd.ItemIcon(parent, 18).count, nil, "an icon without a count size has none")
+end)
+
 -------------------------------------------------------------------------------
 --  Class icons
 -------------------------------------------------------------------------------

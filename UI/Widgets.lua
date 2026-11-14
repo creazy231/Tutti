@@ -635,9 +635,11 @@ end
 
 -------------------------------------------------------------------------------
 --  Item icon: the item's picture in a black rim, under a 1 px edge in the game's own quality colour
---  (the mockup's .ico). `icon` is the picture, `edge` its four edge lines, `rim` the black behind it.
+--  (the mockup's .ico). `icon` is the picture, `edge` its four edge lines, `rim` the black behind it, and,
+--  given a `countSize`, `count` the stack's size in its bottom-right corner, as Blizzard's roll popup shows it.
 -------------------------------------------------------------------------------
 local QUESTION_MARK = 134400 -- the game's question-mark icon, for an item whose picture is not known yet
+local COUNT_INSET = 2         -- px from the icon's bottom-right corner to the count's
 
 -- A texture the game gave in the clear: a file ID above 0, or a path. Anything else is nil.
 local function textureOf(value)
@@ -646,27 +648,54 @@ local function textureOf(value)
     return ns.Text(value)
 end
 
-function W.ItemIcon(parent, size)
+-- The count's font: the bold file (as a name's) with an outline, so the number reads on any picture, as the
+-- game's stack counts do; the regular file or the game's font where the client cannot load it.
+local function countFont(fs, size)
+    local bold = ns.Theme.Font("item")
+    local regular = ns.Theme.Font("sub")
+    if not fs:SetFont(bold, size, "OUTLINE") and not fs:SetFont(regular, size, "OUTLINE") then
+        fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, "OUTLINE")
+    end
+    fs:SetTextColor(color("text"))
+end
+
+function W.ItemIcon(parent, size, countSize)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(size, size)
     f.rim = W.Fill(f, "black", "BACKGROUND", -1)
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetAllPoints()
     f.edge = W.Border(f, { ns.Theme.QualityEdge() }, "OVERLAY")
+    if countSize then
+        f.count = f:CreateFontString(nil, "OVERLAY")
+        f.count:SetDrawLayer("OVERLAY", 7) -- over the edge lines
+        countFont(f.count, countSize)
+        f.count:SetJustifyH("RIGHT")
+        f.count:SetPoint("BOTTOMRIGHT", -COUNT_INSET, COUNT_INSET)
+        f.count:Hide()
+    end
     -- The rim is one physical pixel outside the icon, whatever the UI scale.
     W.Paint(f, function(self)
         local px = W.Pixel(self)
         self.rim:ClearAllPoints()
         self.rim:SetPoint("TOPLEFT", self, "TOPLEFT", -px, px)
         self.rim:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", px, -px)
+        if self.count then countFont(self.count, countSize) end
     end)
 
-    -- The picture and the quality. A card made from the loot history can lack its picture until the game
-    -- has the item: the question mark stands in, with the edge, and the next SetItem takes the real one.
-    function f:SetItem(texture, quality)
+    -- The picture, the quality and the stack's size (shown above 1). A card made from the loot history can lack
+    -- its picture until the game has the item: the question mark stands in, with the edge, and the next SetItem
+    -- takes the real one.
+    function f:SetItem(texture, quality, count)
         self.icon:SetTexture(textureOf(texture) or QUESTION_MARK)
         local r, g, b = ns.Theme.QualityEdge(quality)
         for _, line in ipairs(self.edge) do W.SetFill(line, { r, g, b }) end
+        if self.count then
+            count = ns.Clear(count, "number")
+            local stack = count and count > 1 and count < math.huge and floor(count) or nil
+            self.count:SetShown(stack ~= nil)
+            self.count:SetText(stack and tostring(stack) or "")
+        end
     end
     f:SetItem()
     return f

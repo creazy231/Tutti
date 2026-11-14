@@ -26,7 +26,9 @@ First release.
   mouse is over it, and a new roll cancels the countdown.
 - Recent rolls: the session's results (up to 100) by instance or zone and day, with
   everyone's picks one click away. Opened from the clock in the header, the addon
-  compartment or `/tutti`; kept through `/reload`, cleared at login.
+  compartment or `/tutti`; kept through `/reload`, cleared at login. The demo's results
+  are marked "DEMO".
+- A stack of an item shows its count on the item's icon, on the card and in Recent rolls.
 - Raids: a card lists only the members who picked Need, Greed or Transmog, the winner and
   you, and folds everyone else into one line ("13 passed · 2 choosing") that opens.
 - Item tooltips on hover, shift-click to link, ctrl-click for the dressing room. A BiS badge

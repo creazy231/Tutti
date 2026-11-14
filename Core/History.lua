@@ -6,9 +6,9 @@
 --    ns.History.Entries()        { entry, ... } newest first; a new list on every call, the entries in
 --                                it are shared and read-only
 --    ns.History.Age(entry, now)  "now" (under a minute), "<n>m" or "<n>h"; `now` is time() by default
---  An entry: { cardId, link, name, icon, quality, place, at, winner|nil, allPassed, ended, rows, demo|nil }
+--  An entry: { cardId, link, name, icon, quality, count, place, at, winner|nil, allPassed, ended, rows, demo|nil }
 --    cardId     the card's id, so that the card finds its entry again (see below); nil without one
---    link, name, icon, quality  the item, as the card had it (any of them may be missing)
+--    link, name, icon, quality, count  the item and how many dropped, as the card had them (any may be missing)
 --    place      where the player was: the name of the instance, else of the zone ("Unknown" when the
 --               game gives neither)
 --    at         time() when the card was first decided
@@ -26,6 +26,8 @@
 --  without a numeric id always makes an entry of its own, and a demo card never stands for a real one.
 --  Card ids restart at every load (Core/Rolls.lua counts from 1) while the results outlast a /reload, so
 --  a load strips the ids from the saved entries: their cards are gone, and an id must never name another.
+--  Picks and numbers that reach a card after its entry was made ("CARD_CHANGED" with picks) update the entry
+--  the same way, in place, so the open line shows what the card shows.
 --  Message "HISTORY_CHANGED" when an entry was added or updated, or the list was cleared.
 --  Everything the game hands over (the place's names, the login flag) passes ns.Clear.
 -------------------------------------------------------------------------------
@@ -96,7 +98,7 @@ local function entryOf(card)
         cardId = ns.Clear(card.id, "number"),
         link = ns.Clear(card.link, "string"), name = ns.Clear(card.name, "string"),
         icon = ns.Clear(card.icon, "number") or ns.Clear(card.icon, "string"),
-        quality = ns.Clear(card.quality, "number"),
+        quality = ns.Clear(card.quality, "number"), count = ns.Clear(card.count, "number"),
         place = placeName(), at = time(),
         winner = winner, allPassed = allPassed, ended = ended, rows = rows,
         demo = card.demo == true or nil,
@@ -153,6 +155,19 @@ local function record(card)
 end
 
 ns.Listen("CARD_DECIDED", record)
+
+-- A number that comes after the decision (the game can send a Greed's after the winner) shows on the card: the
+-- card's entry takes the card's rows again, in place. Only for a card that has an entry, and not for the message
+-- of the decision itself, which CARD_DECIDED has just recorded with the same picks.
+ns.Listen("CARD_CHANGED", function(card, changes)
+    card, changes = ns.Clear(card, "table"), ns.Clear(changes, "table")
+    if not (card and changes and changes.picks) or changes.decided then return end
+    local recent = saved()
+    local entry = recent and entryFor(recent, card)
+    if not entry then return end
+    entry.winner, entry.allPassed, entry.ended, entry.rows = resultOf(card)
+    ns.Fire("HISTORY_CHANGED")
+end)
 
 -- The cards of an earlier load are gone, and this load numbers its cards from 1 again.
 ns.Listen("DB_READY", function()

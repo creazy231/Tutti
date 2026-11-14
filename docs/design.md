@@ -79,7 +79,7 @@ Everything below was shown in the approved mockup unless it is marked *(not in t
   - It opens on its own as soon as a roll starts.
   - Cards stay in drop order; new cards go at the bottom.
 - **Card:**
-  - item icon with a 1 px quality-coloured edge;
+  - item icon with a 1 px quality-coloured edge, and the stack's count in its corner when more than one dropped ("2", as Blizzard's popup shows it) *(not in the mockup)*;
   - name in the quality colour;
   - under it "Two-Hand Axe · ilvl 33";
   - on the right, the seconds left;
@@ -146,7 +146,8 @@ The session's results are one click away *(user)*:
 What it shows:
 - It is the same window with a back arrow and the title "Recent rolls".
 - It is grouped by instance or zone and day ("City of Dalaran · today").
-- Each line has: icon, item name, winner (or "Everyone passed") with pick and number, and the age ("6m").
+- Each line has: icon, item name, winner (or "Everyone passed") with pick and number, and the age ("6m"). A result of `/tutti demo` says "DEMO" before its age *(not in the mockup)*.
+- A number that reaches a card after its winner (the game can send a Greed's late) reaches its line's picks too.
 - Clicking a line opens everyone's picks for that item.
 - The footer reads "Kept for this session · /tutti opens this list".
 

@@ -44,7 +44,7 @@ local ceil, max, min = math.ceil, math.max, math.min
 -- Sizes in px: the mockup's CSS and the Global Constraints.
 local WIDTH = 300                                         -- the window's
 local PAD_TOP, PAD_X, PAD_BOTTOM = 9, 10, 7               -- .card padding
-local ICON, ICON_GAP = 34, 9                              -- .ico, the .ihead gap
+local ICON, ICON_GAP, COUNT = 34, 9, 11                   -- .ico, the .ihead gap; the stack count's bold 11
 local NAME_H, SUB_GAP, SUB_H = 16, 2, 13                  -- .in line height, .is margin and line height
 local TIMER_BLOCK, TIMER_GAP, TIMER_H = 16, 8, 2          -- .timer: 8 above, 2 high, 6 below
 local BUTTONS_BLOCK, BUTTON_GAP, BUTTON_H = 30, 4, 23    -- .btns: 23 high, 7 below; 4 between. Its 1 px margin
@@ -596,7 +596,7 @@ end
 
 local function paintHead(view, card, winner, awaits)
     local live = card.status == "live"
-    view.icon:SetItem(card.icon, card.quality)
+    view.icon:SetItem(card.icon, card.quality, card.count)
     font(view.name, "item")
     view.name:SetText(card.name or "")
     paint(view.name, { Th.Quality(card.quality) })
@@ -906,7 +906,7 @@ local function newView(parent)
 
     -- The head: icon (with the ring that glows around it), name, and the subtitle line under it, both lines
     -- centred on the icon.
-    view.icon = W.ItemIcon(full, ICON)
+    view.icon = W.ItemIcon(full, ICON, COUNT) -- with the stack's size, as Blizzard's popup shows it
     view.icon:SetPoint("TOPLEFT", PAD_X, -PAD_TOP)
     view.ring = full:CreateTexture(nil, "BACKGROUND")
     view.ring:SetTexture(W.MEDIA .. "ring")

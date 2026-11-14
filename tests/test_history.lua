@@ -408,6 +408,43 @@ T.it("a late decision updates the card's entry instead of adding one", function(
     T.eq(changed.n, 6)
 end)
 
+T.it("a number that comes after the winner reaches the entry, in place (final review, item 5)", function()
+    local G, W, ns = T.load()
+    local ST = G.Enum.EncounterLootDropRollState
+    W.setGroup(party())
+    local changed = count(ns, "HISTORY_CHANGED")
+    local card = newCard(W, ns, 7)
+    -- Before the decision the history's picks make no entry.
+    W.setDrop(9, 7, dropInfo(G, W, { rollInfo(BRISE, ST.Greed) }))
+    T.eq(#ns.History.Entries(), 0)
+    T.eq(changed.n, 0)
+    -- The winner, then a moment later the Greed's number the game sends after it.
+    local rolls = { rollInfo(ORLEN, ST.NeedMainSpec, 19, true), rollInfo(BRISE, ST.Greed) }
+    W.setDrop(9, 7, won(G, W, ORLEN, 19, rolls))
+    local entry = ns.History.Entries()[1]
+    T.eq(changed.n, 1, "the decision made the entry, once")
+    T.eq(column(entry.rows, "roll"), "19,nil,nil,nil,nil")
+    local at = entry.at
+    W.advance(2)
+    rolls[2] = rollInfo(BRISE, ST.Greed, 44)
+    W.setDrop(9, 7, won(G, W, ORLEN, 19, rolls))
+    T.eq(ns.Rolls.Rows(card)[2].roll, 44, "the card shows the late number")
+    T.eq(#ns.History.Entries(), 1, "no second entry")
+    T.eq(ns.History.Entries()[1], entry, "the same entry")
+    T.eq(column(entry.rows, "roll"), "19,44,nil,nil,nil", "with the late number")
+    T.eq(entry.at, at, "its time kept")
+    T.eq(entry.winner.roll, 19)
+    T.eq(changed.n, 2, "and HISTORY_CHANGED says so")
+    -- The winner's own number arriving late reaches the winner's record too.
+    local late = newCard(W, ns, 8, { link = W.itemLink(AXE + 1, "Other axe") })
+    local other = { lootListKey = 8, itemHyperlink = W.itemLink(AXE + 1, "Other axe") }
+    W.setDrop(9, 8, won(G, W, BRISE, nil, { rollInfo(BRISE, ST.NeedMainSpec, nil, true) }, other))
+    T.eq(ns.History.Entries()[1].winner.roll, nil)
+    W.setDrop(9, 8, won(G, W, BRISE, 61, { rollInfo(BRISE, ST.NeedMainSpec, 61, true) }, other))
+    T.eq(late.status, "decided")
+    T.eq(ns.History.Entries()[1].winner.roll, 61, "the winner's number in the winner's record")
+end)
+
 T.it("a card that ended and is decided later keeps its one entry", function()
     local G, W, ns = T.load()
     W.setGroup(party())
@@ -653,4 +690,13 @@ T.it("a saved list with damaged items still lists the good ones", function()
     ns.Fire("CARD_DECIDED", handCard(W, 3))
     T.eq(#ns.History.Entries(), 1)
     T.eq(type(ns.DB.recent), "table")
+end)
+
+T.it("an entry keeps how many of the item dropped (final review, item 6)", function()
+    local G, W, ns = T.load()
+    W.setGroup(party())
+    ns.Fire("CARD_DECIDED", handCard(W, 1, { count = 3 }))
+    T.eq(ns.History.Entries()[1].count, 3)
+    ns.Fire("CARD_DECIDED", handCard(W, 2, { count = T.secret(2) }))
+    T.eq(ns.History.Entries()[1].count, nil, "a count the game keeps secret is not kept")
 end)

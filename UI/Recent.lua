@@ -2,9 +2,10 @@
 --  Tutti: Recent rolls, the window's view of the session's results (ns.History; the approved mockup's .sec, .hl,
 --  .hx and .hint). One line per item, newest first, under a label for the place and the day ("STONEWATCH KEEP ·
 --  TODAY"): the item's icon and name, who won and how ("Orlen · Need 19", "You · Need 87" in the accent), or
---  "Everyone passed" / "Roll ended", and the result's age on the right. A click opens everyone's pick under the
---  line (the card's own rows, 19 px high, 44 px in); a second click, or a click on another line, closes it. A
---  footer says how long the list is kept. While the view shows, it redraws when the history changes and its ages
+--  "Everyone passed" / "Roll ended", and the result's age on the right, after a muted "DEMO" on a result of
+--  /tutti demo, so it never passes for a real roll; the icon shows a stack's count. A click opens everyone's pick
+--  under the line (the card's own rows, 19 px high, 44 px in); a second click, or a click on another line, closes
+--  it. A footer says how long the list is kept. While the view shows, it redraws when the history changes and its ages
 --  every 10 seconds. A damaged saved list never stops it: what cannot be read shows as unknown (a time without an
 --  age or a day, a place as "Unknown"), and a redraw that fails anyway is reported, not repeated every frame.
 --    ns.Recent.view   the view's frame, once the window has built it (registered as "recent")
@@ -22,7 +23,7 @@ local SEC_H, SEC_FIRST_H, SEC_TEXT = 23, 22, 7 + 13.3 / 2      -- .sec: 1 + 7 + 
                                                                -- under the header's (.hd + .sec); its line's middle
 local SEC_GAP = 8                                              -- the line after the label
 local LINE_H = 38                                              -- .hl: 5 + 15 + 13 + 5, as the mockup measures (R40)
-local ICON, ICON_GAP = 26, 8                                   -- .hl .ico, .hl gap
+local ICON, ICON_GAP, COUNT = 26, 8, 10                       -- .hl .ico, .hl gap; the stack count's bold 10
 local TEXT_X = PAD_X + ICON + ICON_GAP                         -- 44
 local NAME_H, WHO_H, AGE_H = 15, 13, 14.7                      -- .hl .in, .hl .hw, .hl time line heights
 local TEXT_TOP = (LINE_H - NAME_H - WHO_H) / 2                 -- the two lines centred on the line
@@ -46,6 +47,7 @@ local YOU, EVERYONE_PASSED, ROLL_ENDED = "You", "Everyone passed", "Roll ended"
 local TODAY, YESTERDAY, SOMEWHERE = "today", "yesterday", "Unknown"
 local FOOTER = "Kept for this session · /tutti opens this list"
 local EMPTY = "No rolls yet"
+local DEMO = "DEMO" -- the tag of a result of /tutti demo, as the section labels write their words
 
 -------------------------------------------------------------------------------
 --  What a result says
@@ -153,15 +155,17 @@ local function newLine(view)
     line.selected = W.Fill(line, "selected")
     line.selected:SetAllPoints()
     line.selected:Hide()
-    line.icon = W.ItemIcon(line, ICON)
+    line.icon = W.ItemIcon(line, ICON, COUNT)
     line.icon:SetPoint("LEFT", PAD_X, 0)
     line.age = W.Text(line, "small", "faint")
     line.age:SetJustifyH("RIGHT")
     line.age:SetPoint("RIGHT", line, "TOPRIGHT", -PAD_X, -AGE_MIDDLE)
-    -- The name runs to 8 px before the age, cut there; its right end is the age's left, moved to its own middle.
+    -- A demo's result: "DEMO" before the age, in the section labels' small muted capitals.
+    line.demo = W.Text(line, "section", "muted")
+    line.demo:SetText(DEMO)
+    line.demo:SetPoint("RIGHT", line.age, "LEFT", -AGE_GAP, 0)
+    line.demo:Hide()
     line.name = W.Text(line, "row")
-    line.name:SetPoint("LEFT", line, "TOPLEFT", TEXT_X, -NAME_MIDDLE)
-    line.name:SetPoint("RIGHT", line.age, "LEFT", -AGE_GAP, AGE_MIDDLE - NAME_MIDDLE)
     line.who = W.Text(line, "item", "text", nil, WHO_SIZE)
     line.who:SetPoint("LEFT", line, "TOPLEFT", TEXT_X, -WHO_MIDDLE)
     line.dot = W.Text(line, "sub", "faint")
@@ -177,7 +181,13 @@ end
 
 local function paintLine(line, entry, now, open)
     line.entry = entry
-    line.icon:SetItem(entry.icon, entry.quality)
+    line.icon:SetItem(entry.icon, entry.quality, entry.count)
+    -- The name runs to 8 px before the age (or the demo's tag), cut there; its right end is moved to its own middle.
+    local demo = entry.demo == true
+    line.demo:SetShown(demo)
+    line.name:ClearAllPoints()
+    line.name:SetPoint("LEFT", line, "TOPLEFT", TEXT_X, -NAME_MIDDLE)
+    line.name:SetPoint("RIGHT", demo and line.demo or line.age, "LEFT", -AGE_GAP, AGE_MIDDLE - NAME_MIDDLE)
     line.name:SetText(itemName(entry))
     W.SetTextColor(line.name, { Th.Quality(ns.Clear(entry.quality, "number")) })
     line.age:SetText(ageOf(entry, now))
