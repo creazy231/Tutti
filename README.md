@@ -4,7 +4,7 @@
 
 **Every group loot roll in one calm window, drawn in the EllesmereUI look.**
 When an item drops in your group, Tutti opens by itself and shows who picked Need, Greed or
-Pass, everyone's roll and who won. You roll in the same window. Made for WoW Forever. In
+Pass, everyone's roll and who won. You roll in the same window. On every game version. In
 music, *tutti* is the passage where the whole orchestra plays together; here it is the
 whole group's rolls in one window.
 
@@ -76,8 +76,12 @@ keep their buttons; after it you roll in Blizzard's popups and the cards show th
 
 ## Compatibility
 
-WoW Forever (1.60.1, Interface 16001). For now Tutti runs on WoW Forever only. EllesmereUI,
-NaowhForever_BiS and Polestar are optional.
+Every game version: Retail, Classic Era, TBC Anniversary, Wrath (and Titan-Reforged), Cataclysm and Mists of Pandaria Classic, and WoW Forever. One TOC lists them all
+(`## Interface: 120105, 120107, 50504, 40402, 38002, 30405, 20506, 16001, 11509`).
+Retail and WoW Forever read the newer loot history; the Classic clients read their own,
+older one, and offer Need, Greed and Pass (no Transmog there). The addon compartment
+exists on Retail and WoW Forever; elsewhere `/tutti` opens Recent rolls. EllesmereUI,
+NaowhForever_BiS (WoW Forever) and Polestar are optional.
 
 ## Good to know
 

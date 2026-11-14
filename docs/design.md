@@ -44,7 +44,7 @@ The name: in music, "tutti" is the passage where the whole orchestra plays toget
 
 ## Constraints
 
-- **Client:** WoW Forever 1.60.1 (game type `camelot`, TOC 16001) on the 12.1 engine. Blizzard's code is at github.com/Gethe/wow-ui-source, branch `forever`.
+- **Client:** WoW Forever 1.60.1 (game type `camelot`, TOC 16001) on the 12.1 engine. Blizzard's code is at github.com/Gethe/wow-ui-source, branch `forever`. Since R52 Tutti also runs on Retail and every Classic client (see "Every client" under "How it works").
 - **Frames and hooks:**
   - plain frames only, no secure templates;
   - hooks only through `hooksecurefunc`;
@@ -262,6 +262,18 @@ A roll (rollID) and a drop (encounterID, lootListKey) share the item link. A dro
   - **Known gap:** back from the gamepad interface in the middle of a roll, Blizzard's `GroupLootContainer_UninitGamepad` puts its popups back for the rolls still running (`GroupLootContainer_RefreshRolls`, not through the router), next to Tutti's cards, as after a `/reload`. Accepted: Tutti hides no Blizzard frame.
 - With the popups hidden, EllesmereUI's loot-roll reskin and its "Group Loot" mover have nothing to act on. That is harmless.
 
+### Every client (R52)
+
+The user asked for every game version (2026-11-14). wow-ui-source's branches `live` (Retail 12.1.5), `classic` (Mists 5.5.4), `classic_titan` (3.80.2), `classic_anniversary` (2.5.6), `classic_era` (1.15.9) and `forever` (1.60.1) were compared for every API Tutti calls. The Cataclysm 4.4.2 and Wrath 3.4.5 clients run the same Classic code (the classic branches carry every flavor's UIParent).
+
+- **The same everywhere:** START_LOOT_ROLL, GetLootRollItemInfo, GetLootRollItemLink, GetLootRollTimeLeft, RollOnLoot, GetActiveLootRollIDs, CANCEL_LOOT_ROLL, CONFIRM_LOOT_ROLL, C_Item, C_Texture.GetAtlasInfo, C_ClassColor, C_AddOns, Enum.ItemWeaponSubclass and ItemArmorSubclass; the roll types Pass 0, Need 1, Greed 2.
+- **Retail:** WoW Forever's own path: the newer loot history (its drop field is `lootListID`, Forever's `lootListKey`; Tutti takes the key from LOOT_HISTORY_UPDATE_DROP and reads neither), the event router (`GameEvent.UnregisterInternalEvent`), Transmog, `C_Loot.GetLootRollDuration`, the addon compartment. No gamepad interface, no title friends; names "Name-Realm".
+- **The Classic clients:**
+  - The older loot history: `C_LootHistory.GetNumItems`, `GetItem(i)` (rollID, link, numPlayers, isDone, winnerIdx, isMasterLoot) and `GetPlayerInfo(i, p)` (name, class, rollType, roll, isWinner, isMe), with LOOT_HISTORY_FULL_UPDATE, _ROLL_CHANGED and _ROLL_COMPLETE (Blizzard_FrameXML/Classic/LootHistory.lua). An item names its roll, so it goes to that roll's card, no matching needed; a roll the player is not in gets a card of its own (`historyRoll`), which the player's roll joins if it starts after. Players come by name: a pick is filed under the member of that name (`Group.ByName`), else under the name. Done with a winner named decides the card, done without one means everyone passed. Master loot, items done before Tutti saw them and rolls whose card is gone (`knownRolls`) make no card. Every event reads all items again.
+  - No event router: UIParent registers START_LOOT_ROLL itself (Blizzard_UIParent/<flavor>/UIParent.lua), so `Popups` takes the event off UIParent there, as ElvUI does; CONFIRM_LOOT_ROLL stays Blizzard's.
+  - The popup (Blizzard_UIPanels_Game/Classic/LootFrame.lua) offers Need, Greed and Pass, no Transmog and no Disenchant; a Disenchant pick (type 3, from another addon) reads as Greed.
+  - No `C_Loot.GetLootRollDuration`: a roll seen after a /reload takes its time from GetLootRollTimeLeft against a minute. No addon compartment: `/tutti` opens Recent rolls. Class icons fall back to CLASS_ICON_TCOORDS where an atlas is missing.
+
 ### Integrations
 
 - **EllesmereUI:**
@@ -337,7 +349,7 @@ No minimap button.
   - `.pkgmeta` plus the BigWigs packager workflow, ready but unused.
   - The GitHub repo and the CurseForge project are created only when the user asks. `docs/` and `tests/` never ship.
 - **TOC:**
-  - `## Interface: 16001`;
+  - `## Interface: 120105, 120107, 50504, 40402, 38002, 30405, 20506, 16001, 11509` (every client, R52; it was 16001);
   - Title Tutti, Author creazy231, `## Version: @project-version@`;
   - SavedVariables TuttiDB, OptionalDeps EllesmereUI and NaowhForever_BiS;
   - IconTexture and the compartment functions.

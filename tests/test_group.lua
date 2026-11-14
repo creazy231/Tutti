@@ -323,3 +323,19 @@ T.it("a raid's size and flag pass ns.Clear (final review, item 10)", function()
     for _, unit in ipairs(asked) do last = math.max(last, tonumber(unit:match("^raid(%d+)$")) or 0) end
     T.eq(last, 40, "a raid is 40 slots at most")
 end)
+
+T.it("ByName finds a member by the name the Classic loot history gives, with or without the realm", function()
+    local G, W, ns = T.load({ setup = function(G, W) W.run = false end })
+    W.setGroup({
+        { unit = "party1", name = "Orlen", classFile = "PALADIN", guid = "Player-1-0002" },
+        { unit = "party2", name = "Brise", realm = "Stormrage", classFile = "SHAMAN", guid = "Player-9-0003" },
+    })
+    T.eq(ns.Group.ByName("Orlen").guid, "Player-1-0002")
+    T.eq(ns.Group.ByName("orlen").guid, "Player-1-0002", "without case")
+    T.eq(ns.Group.ByName("Brise-Stormrage").guid, "Player-9-0003")
+    T.eq(ns.Group.ByName("Brise").guid, "Player-9-0003", "the history without the realm")
+    T.eq(ns.Group.ByName("Orlen-Silvermoon").guid, "Player-1-0002", "the history with the player's own realm")
+    T.eq(ns.Group.ByName("Brise-Kazzak"), nil, "another realm's Brise is someone else")
+    T.eq(ns.Group.ByName("Kestrel"), nil)
+    T.eq(ns.Group.ByName(T.secret("Orlen")), nil, "a secret name is never compared")
+end)

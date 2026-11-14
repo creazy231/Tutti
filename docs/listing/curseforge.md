@@ -6,8 +6,8 @@ Everything to paste into the CurseForge project form (authors.curseforge.com).
 
 - **Project name:** Tutti
 - **Game / class:** World of Warcraft · Addons
-- **Game version:** WoW Forever (the packager sets it on every upload from `## Interface: 16001`
-  in `Tutti.toc`)
+- **Game versions:** Retail, Classic Era, TBC Anniversary, Wrath (and Titan-Reforged), Cataclysm and Mists of Pandaria Classic, and WoW Forever (the packager sets them on every upload from
+  `## Interface` in `Tutti.toc`)
 - **Primary category:** Bags & Inventory. CurseForge has no loot category; this is where its
   group loot roll addons are filed (Better Loot Rolls, Blocky Loot Frame, Should I Roll?).
   Second choice, as an additional category: Miscellaneous.
@@ -15,9 +15,9 @@ Everything to paste into the CurseForge project form (authors.curseforge.com).
 - **Source:** https://github.com/creazy231/Tutti
 - **Issues:** https://github.com/creazy231/Tutti/issues
 - **Avatar:** `docs/listing/icon.png` (400 × 400; `icon-source.jpg` is the 2048 px original)
-- **Summary** (136 characters):
+- **Summary** (142 characters):
 
-  > Every group loot roll in one window: who picked Need, Greed or Pass, the rolls and the winner. In the EllesmereUI look, for WoW Forever.
+  > Every group loot roll in one window: who picked Need, Greed or Pass, the rolls and the winner. In the EllesmereUI look, on every game version.
 
 ## Screenshots (gallery, in this order, with these captions)
 
@@ -43,7 +43,7 @@ animations (copy and layout in their `SHOTS` and `GIFS` lists, the render dir as
 ![Tutti](https://raw.githubusercontent.com/creazy231/Tutti/main/docs/listing/screenshots/hero.png)
 
 **Every group loot roll in one calm window, drawn in the EllesmereUI look.**
-When an item drops in your group, Tutti opens by itself and shows who picked Need, Greed or Pass, everyone's roll and who won. You roll right there too. Made for WoW Forever.
+When an item drops in your group, Tutti opens by itself and shows who picked Need, Greed or Pass, everyone's roll and who won. You roll right there too. On every game version.
 
 ![A boss drop in Tutti: the picks come in, the numbers spin, the winners get their crowns](https://raw.githubusercontent.com/creazy231/Tutti/main/docs/listing/animations/01-a-boss-drop.gif)
 
@@ -80,7 +80,7 @@ The clock in the window's header and the addon compartment (the addon menu on th
 
 ## Good to know
 
-- **Made for WoW Forever.** For now Tutti runs on WoW Forever only.
+- **Every game version.** Retail, Classic Era, TBC Anniversary, Wrath (and Titan-Reforged), Cataclysm and Mists of Pandaria Classic, and WoW Forever. The Classic clients offer Need, Greed and Pass.
 - **Blizzard's roll popups** are replaced while "Roll in Tutti" is on. Turning it off brings them back after a /reload; the setting offers a Reload button.
 - **Gamepad interface:** with it on, Tutti steps aside and Blizzard's own gamepad roll frame takes the rolls.
 - **Soulbound items** still ask Blizzard's own confirmation. Tutti never confirms for you.

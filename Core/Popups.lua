@@ -1,10 +1,11 @@
 -------------------------------------------------------------------------------
 --  Tutti: Blizzard's group-loot roll popups. With "Roll in Tutti" on the player rolls on Tutti's
---  cards, so the popups for the same rolls are switched off. START_LOOT_ROLL reaches them only
---  through the event router of Blizzard_Game, which holds one handler for it; calling
+--  cards, so the popups for the same rolls are switched off. On WoW Forever and Retail START_LOOT_ROLL
+--  reaches them only through the event router of Blizzard_Game, which holds one handler for it; calling
 --  GameEvent.UnregisterInternalEvent("START_LOOT_ROLL") takes that handler out (ElvUI does the
 --  same), and the router then never calls GroupLootContainer_AddRoll. Tutti's own handler for the
---  event (Core/Rolls.lua) sits on Tutti's frame and is not touched.
+--  event (Core/Rolls.lua) sits on Tutti's frame and is not touched. The Classic clients have no router:
+--  there the event comes off UIParent (see `switchOff`).
 --    ns.Popups.Apply()           makes the game match the setting: with the setting on it switches the
 --                                popups off, once. It runs on DB_READY and when "rollInTutti" changes.
 --    ns.Popups.Suppressed()      Blizzard's popups are switched off, from the switch-off until the
@@ -81,10 +82,22 @@ end
 -- Takes Blizzard's handler for EVENT out of the router. Without GameEvent or its function there is
 -- nothing to call. A call that raises is reported and leaves the popups as they are; the next Apply
 -- asks again.
+-- The Classic clients have no router: UIParent registers EVENT itself and opens the popup from its own
+-- OnEvent (Blizzard_UIParent/<flavor>/UIParent.lua, every Classic flavor), so there EVENT comes off UIParent,
+-- the way ElvUI does it on those clients. CONFIRM_LOOT_ROLL stays: the bind confirmation is Blizzard's.
 local function switchOff()
     local router = ns.Clear(GameEvent, "table")
     local unregister = router and ns.Clear(router.UnregisterInternalEvent, "function")
-    if unregister and ns.Safe(unregister, EVENT) then switchedOff = true end
+    if unregister then
+        if ns.Safe(unregister, EVENT) then switchedOff = true end
+        return
+    end
+    local parent = ns.Clear(UIParent, "table")
+    local isRegistered = parent and ns.Clear(parent.IsEventRegistered, "function")
+    local unregisterEvent = parent and ns.Clear(parent.UnregisterEvent, "function")
+    if not (isRegistered and unregisterEvent) then return end
+    local ok, registered = pcall(isRegistered, parent, EVENT)
+    if ok and registered == true and ns.Safe(unregisterEvent, parent, EVENT) then switchedOff = true end
 end
 
 function Popups.Apply()

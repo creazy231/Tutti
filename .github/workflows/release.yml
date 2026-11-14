@@ -1,11 +1,11 @@
 # Packages Tutti and uploads it when a version tag is pushed (e.g. 1.0.0,
-# 1.1.0-beta1). Tutti is for WoW Forever only: its TOC names one game version,
-# ## Interface: 16001 (WoW Forever 1.60.1). The BigWigs packager tags the file with
-# that version, names the zip Tutti-<tag>-forever.zip, and uploads to every site
+# 1.1.0-beta1). Its TOC names every client in one ## Interface line (Retail, the
+# Classic clients, WoW Forever). The BigWigs packager tags the file with all of those
+# game versions, names the zip Tutti-<tag>.zip, and uploads to every site
 # whose project id is in the TOC and whose token is set as a repository secret:
 #   CurseForge   ## X-Curse-Project-ID  + secret CF_API_KEY
 #   Wago         ## X-Wago-ID           + secret WAGO_API_TOKEN   (optional)
-# WoWInterface has no WoW Forever game version, so it is not used.
+#   WoWInterface ## X-WoWI-ID           + secret WOWI_API_TOKEN   (optional; no Forever there)
 # A GitHub release with the zip is always created. Tags containing "alpha" or
 # "beta" are uploaded as alpha/beta files. See docs/RELEASING.md.
 #
@@ -28,6 +28,7 @@ jobs:
     env:
       CF_API_KEY: ${{ secrets.CF_API_KEY }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7

@@ -101,10 +101,15 @@ local REASON_ANY = "You can't roll Need on this item."
 -- NeedOffSpec 1, Transmog 2, Greed 3, NoRoll 4, Pass 5).
 local STATE_OF = { [0] = "need", [1] = "need", [2] = "transmog", [3] = "greed", [4] = "wait", [5] = "pass" }
 
+-- A pick in the Classic clients' loot history (LOOT_ROLL_TYPE_PASS 0, _NEED 1, _GREED 2, _DISENCHANT 3) as a
+-- row's state. Disenchant is a Greed-tier roll that no client's popup offers any more: it reads as Greed.
+local CLASSIC_STATE = { [0] = "pass", [1] = "need", [2] = "greed", [3] = "greed" }
+
 local list = {}       -- the cards in arrival order
 local byID = {}       -- Tutti's own id -> card
 local byDropKey = {}  -- "<encounterID>:<lootListKey>" -> the card that has the drop
 local knownDrops = {} -- the keys a card has had or Tutti ignored, with the drop's start (true: none to read)
+local knownRolls = {} -- the roll IDs a card has had (Classic): one card per roll, never a second for it
 local lastID = 0
 
 -------------------------------------------------------------------------------
@@ -280,11 +285,20 @@ local function join(card, roll)
     watch(card)
 end
 
+-- A card the Classic history made for this very roll, still live and without the player's roll.
+local function historyCardOf(rollID)
+    for i = 1, #list do
+        local card = list[i]
+        if card.historyRoll == rollID and card.rollID == nil and card.status == "live" then return card end
+    end
+end
+
 local function add(rollID, rollTime)
     if hasLiveCard(rollID) then return end
     local roll = readRoll(rollID, rollTime)
     if not roll then return end
-    local waiting = showing(roll.link, roll.itemID, function(card)
+    knownRolls[rollID] = true
+    local waiting = historyCardOf(rollID) or showing(roll.link, roll.itemID, function(card)
         return card.status == "live" and card.rollID == nil and card.dropKey ~= nil
     end)[1]
     if waiting then return join(waiting, roll) end
@@ -512,6 +526,114 @@ local function onDrop(encounterID, lootListKey)
 end
 
 -------------------------------------------------------------------------------
+--  The loot history of the Classic clients
+-------------------------------------------------------------------------------
+-- The older history (C_LootHistory.GetNumItems, GetItem, GetPlayerInfo; Blizzard_FrameXML/Classic/LootHistory.lua):
+-- one item per roll, which names its roll ID, so it goes to the card of that very roll. A roll the player is
+-- not in gets a card of its own (`historyRoll`, no buttons), which the player's roll joins should it start
+-- after. Players come by name and class, not GUID: a pick is filed under the group member of that name
+-- (ns.Group.ByName), else under the name. An item done names its winner, or nobody when everyone passed.
+-- Master loot is no roll; an item done before Tutti saw it, or whose card is gone, makes no card.
+local function classicHistory()
+    local history = ns.Clear(C_LootHistory, "table")
+    if not history then return nil end
+    for _, name in ipairs({ "GetNumItems", "GetItem", "GetPlayerInfo" }) do
+        if not ns.Clear(history[name], "function") then return nil end
+    end
+    return history
+end
+
+-- Any card that has had this roll, from the game or from the history.
+local function cardOfRoll(rollID)
+    for i = #list, 1, -1 do
+        local card = list[i]
+        if card.rollID == rollID or card.historyRoll == rollID then return card end
+    end
+end
+
+-- Where a player's pick is filed: the player's GUID, a member's GUID, else "name:<name>".
+local function pickKey(name, isMe)
+    local key = isMe and text(UnitGUID("player")) or nil
+    if not key then
+        local member = ns.Group.ByName(name)
+        key = member and member.guid
+    end
+    return key or ("name:" .. name:lower())
+end
+
+-- Takes an item's players onto the card. Gives the marks of what is new or different (as readPicks does) and
+-- the winner's key, when the game names one.
+local function readClassicPicks(card, history, itemIdx, numPlayers, winnerIdx)
+    local marks, winnerKey
+    for p = 1, numPlayers do
+        local name, class, rollType, roll, isWinner, isMe = history.GetPlayerInfo(itemIdx, p)
+        name = text(name)
+        if name then
+            local me = yes(isMe)
+            local key = pickKey(name, me)
+            local pick = card.picks[key]
+            local oldState, oldRoll = pick and pick.state, pick and pick.roll
+            pick = pick or {}
+            local kind = clear(rollType, "number")
+            pick.state = (kind and CLASSIC_STATE[kind]) or "wait"
+            pick.roll = clear(roll, "number")
+            pick.name = name
+            pick.class = text(class) or pick.class
+            pick.isSelf = me
+            pick.order = p
+            card.picks[key] = pick
+            if p == winnerIdx or yes(isWinner) then winnerKey = key end
+            local mark = (pick.state ~= oldState and "state") or (pick.roll ~= oldRoll and "roll") or nil
+            if mark then
+                marks = marks or {}
+                marks[key] = mark
+            end
+        end
+    end
+    return marks, winnerKey
+end
+
+-- The fields of a card for a roll the player is not in: the item from its link, nothing to choose, a minute.
+local function classicFields(link, rollID)
+    local fields = dropFields(link, 0)
+    fields.historyRoll = rollID
+    return fields
+end
+
+local function onClassicItem(history, itemIdx)
+    local rollID, link, numPlayers, isDone, winnerIdx, isMasterLoot = history.GetItem(itemIdx)
+    rollID, link = clear(rollID, "number"), text(link)
+    if not (rollID and link) or yes(isMasterLoot) then return end
+    local done = yes(isDone)
+    local card = cardOfRoll(rollID)
+    if not card then
+        if done or knownRolls[rollID] then return end
+        knownRolls[rollID] = true
+        card = newCard(classicFields(link, rollID))
+        ns.Fire("CARD_ADDED", card)
+        watch(card)
+    end
+    local changes = {}
+    local winnerKey
+    changes.picks, winnerKey = readClassicPicks(card, history, itemIdx, clear(numPlayers, "number") or 0,
+        clear(winnerIdx, "number"))
+    local gained = not card.history
+    card.history = true
+    if done and card.status ~= "decided" then
+        decide(card, winnerKey, winnerKey == nil)
+        changes.decided = true
+    end
+    if gained or next(changes) then changed(card, changes) end
+end
+
+local function onClassicHistory()
+    local history = classicHistory()
+    if not history then return end
+    local count = clear(history.GetNumItems(), "number") or 0
+    for i = 1, count do ns.Safe(onClassicItem, history, i) end
+end
+
+-------------------------------------------------------------------------------
 --  The interface
 -------------------------------------------------------------------------------
 function Rolls.Cards()
@@ -718,6 +840,13 @@ ns.On("LOOT_HISTORY_UPDATE_DROP", function(_, encounterID, lootListKey)
     encounterID, lootListKey = clear(encounterID, "number"), clear(lootListKey, "number")
     if encounterID and lootListKey then onDrop(encounterID, lootListKey) end
 end)
+
+-- The Classic clients' history: at every choice, every number, the end of a roll and a full update, all of
+-- its items are read again (a dozen or so; their indexes move as items come and go). Unknown events on the
+-- other clients: ns.On leaves them out.
+for _, event in ipairs({ "LOOT_HISTORY_FULL_UPDATE", "LOOT_HISTORY_ROLL_CHANGED", "LOOT_HISTORY_ROLL_COMPLETE" }) do
+    ns.On(event, onClassicHistory)
+end
 
 -- The game clears its loot history and may use its keys again: the ones Tutti remembers, and the cards
 -- they pointed at, go. A card keeps its own fields and picks.

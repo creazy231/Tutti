@@ -1001,6 +1001,60 @@ function F.new(opts)
     end
 
     ---------------------------------------------------------------------------
+    --  A Classic client: W.classic(), from a test's setup (before the addon loads). As in the wow-ui-source branches
+    --  classic, classic_titan, classic_anniversary and classic_era: the older loot history
+    --  (C_LootHistory.GetNumItems, GetItem, GetPlayerInfo; LOOT_HISTORY_FULL_UPDATE, _ROLL_CHANGED, _ROLL_COMPLETE;
+    --  Blizzard_FrameXML/Classic/LootHistory.lua), no event router (UIParent registers START_LOOT_ROLL itself:
+    --  Blizzard_UIParent/<flavor>/UIParent.lua), no C_Loot.GetLootRollDuration, no Transmog in GetLootRollItemInfo,
+    --  no interface style, and names "Name" or "Name-Realm" (UnitName gives the realm apart).
+    --  W.history is the history as the game keeps it, one item per roll:
+    --    { rollID, link, done = false, winner = playerIdx | nil, masterLoot = false,
+    --      players = { { name, class, type = 0 | 1 | 2 | 3 | nil, roll = number | nil, me = false }, ... } }
+    --  type is LOOT_ROLL_TYPE_PASS 0, _NEED 1, _GREED 2, _DISENCHANT 3; nil while the player still chooses.
+    --  W.setHistory(items, event, ...) stores it and says `event` (LOOT_HISTORY_FULL_UPDATE by default).
+    ---------------------------------------------------------------------------
+    function W.classic()
+        W.run = false
+        W.player.name, W.player.realm = "Ayla", "Silvermoon"
+        G.RegionalUniqueNamesEnabled = nil
+        G.GameEvent = nil
+        G.C_Loot = nil
+        G.Enum.EncounterLootDropRollState = nil
+        W.history = {}
+        G.C_LootHistory = {
+            GetNumItems = function() return #W.history end,
+            GetItem = function(i)
+                local it = W.history[i]
+                if not it then return end
+                return it.rollID, it.link, #(it.players or {}), it.done == true, it.winner, it.masterLoot == true,
+                    false
+            end,
+            GetPlayerInfo = function(i, p)
+                local it = W.history[i]
+                local pl = it and it.players and it.players[p]
+                if not pl then return end
+                return pl.name, pl.class, pl.type, pl.roll, it.winner == p, pl.me == true
+            end,
+        }
+        local info = G.GetLootRollItemInfo
+        G.GetLootRollItemInfo = function(rollID)
+            local all = { info(rollID) }
+            return unpack(all, 1, 12) -- texture .. deSkillRequired: no canTransmog
+        end
+        G.UIParent:RegisterEvent("START_LOOT_ROLL")
+        G.UIParent:RegisterEvent("CONFIRM_LOOT_ROLL")
+        -- The game's own globals, not the addon's: past the tracker of what the addon writes.
+        for name, value in pairs({ LOOT_ROLL_TYPE_PASS = 0, LOOT_ROLL_TYPE_NEED = 1, LOOT_ROLL_TYPE_GREED = 2,
+            LOOT_ROLL_TYPE_DISENCHANT = 3 }) do
+            rawset(G, name, value)
+        end
+    end
+    function W.setHistory(items, event, ...)
+        W.history = items
+        W.fire(event or "LOOT_HISTORY_FULL_UPDATE", ...)
+    end
+
+    ---------------------------------------------------------------------------
     --  The interface style (WoW Forever's gamepad interface, a switch in the game's Gamepad settings), with
     --  Blizzard's enum and its numbers (InputConstantsDocumentation.lua). opts.gamepad starts in the Gamepad style.
     --  W.switchStyle("Gamepad" | "Mkb") changes it the way that is hardest on the addon:

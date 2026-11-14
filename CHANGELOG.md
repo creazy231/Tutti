@@ -43,4 +43,6 @@ First release.
   `/tutti settings` and `/tutti demo`.
 - Follows EllesmereUI's panel colour and font live; class colour accent by default. Works
   without EllesmereUI.
-- Made for WoW Forever (Interface 16001).
+- Every game version: Retail, Classic Era, TBC Anniversary, Wrath (and Titan-Reforged),
+  Cataclysm and Mists of Pandaria Classic, and WoW Forever. The Classic clients offer Need,
+  Greed and Pass, and open Recent rolls with `/tutti` (they have no addon compartment).

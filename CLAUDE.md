@@ -1,8 +1,17 @@
 # Tutti
 
 Every group loot roll in one window (who picked Need, Greed or Pass, the rolls, the winner),
-in the EllesmereUI + Polestar look, built on WoW Forever (12.1 engine, Interface 16001). A
-sibling of Sotto, with the same foundations. Author for anything public: creazy231.
+in the EllesmereUI + Polestar look, built on WoW Forever (12.1 engine) and shipped for every
+client from one TOC (R52): Retail, the Classic clients (Era, TBC Anniversary, Wrath and
+Titan-Reforged, Cata, Mists) and Forever. A sibling of Sotto, with the same foundations.
+Author for anything public: creazy231.
+- Clients: Retail and Forever read the newer loot history (LOOT_HISTORY_UPDATE_DROP) and switch
+  Blizzard's popups off at the event router; the Classic clients read the older history
+  (C_LootHistory.GetItem/GetPlayerInfo, `onClassicHistory` in `Core/Rolls.lua`) and switch
+  them off at UIParent (`Core/Popups.lua`). `tests/test_classic.lua` plays a Classic client
+  (`W.classic()` in the fake) and Retail. Check every new API against the branches `live`,
+  `classic`, `classic_titan`, `classic_anniversary`, `classic_era` and `forever`; a client's
+  patch needs its new number in `## Interface` and in `tests/test_load.lua`'s `INTERFACES`.
 
 - Design: `docs/design.md`; approved look: `docs/mockup/tutti-mockup.html` (serve `docs/mockup`
   over http, for example `python3 -m http.server`, the font needs it; keep the built window

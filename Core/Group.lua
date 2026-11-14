@@ -4,6 +4,9 @@
 --    ns.Group.Members()        the list; a member is { unit, guid, name, first, class, isPlayer }
 --                              (name "Orlen Brightmoor", first "Orlen", class "PALADIN")
 --    ns.Group.ByGUID(guid)     one member
+--    ns.Group.ByName(name)     the member of that name, as the Classic loot history names players ("Name", or
+--                              "Name-Realm" from another realm); without case, and a name with or without the
+--                              realm matches a member listed the other way. Nil when no member has it
 --    ns.Group.IsRaid()         the group is a raid
 --    ns.Group.FirstName(name)  "Orlen Brightmoor" or "Orlen-Brightmoor" -> "Orlen"
 --  The list is rebuilt on GROUP_ROSTER_UPDATE and PLAYER_ENTERING_WORLD (and once at
@@ -101,6 +104,24 @@ function Group.Members() return members end
 function Group.ByGUID(guid)
     guid = readable(guid)
     return guid and byGUID[guid] or nil
+end
+
+-- "name-realm" -> "name", any case; a name without a realm stays as it is.
+local function bare(lower) return lower:match("^([^%-]+)%-") or lower end
+
+function Group.ByName(name)
+    name = readable(name)
+    if not name then return nil end
+    local lower = name:lower()
+    for _, member in ipairs(members) do
+        if member.name:lower() == lower then return member end
+    end
+    -- One side with the realm, the other without: the same name before the realm.
+    for _, member in ipairs(members) do
+        local listed = member.name:lower()
+        if bare(listed) == bare(lower) and (listed == bare(listed) or lower == bare(lower)) then return member end
+    end
+    return nil
 end
 
 function Group.IsRaid() return raid end

@@ -8,9 +8,9 @@ and the packager skips every dot-folder (`.github`, `.git`, ...) by itself. A Gi
 with the zip is always created; CurseForge gets the file once its project id and token are
 set up (below).
 
-Tutti is for WoW Forever only. `Tutti.toc` names one game version, `## Interface: 16001`
-(WoW Forever 1.60.1), so the packager tags every upload with that version and names the zip
-`Tutti-<tag>-forever.zip`.
+`Tutti.toc` names every client in one line, `## Interface: 120105, 120107, 50504, 40402, 38002,
+30405, 20506, 16001, 11509` (Retail, the Classic clients, WoW Forever), so the packager tags
+every upload with all of those game versions and names the zip `Tutti-<tag>.zip`.
 
 ## One-time setup
 
@@ -41,9 +41,9 @@ to CurseForge is skipped.
    New repository secret**, name `CF_API_KEY`, value the token. Or from a terminal:
    `gh secret set CF_API_KEY -R creazy231/Tutti`.
 
-Optional, the same way: Wago (`## X-Wago-ID` + secret `WAGO_API_TOKEN`; Wago lists WoW
-Forever 1.60.1). WoWInterface has no WoW Forever game version, so there is nothing to
-upload to there.
+Optional, the same way: Wago (`## X-Wago-ID` + secret `WAGO_API_TOKEN`) and WoWInterface
+(`## X-WoWI-ID` + secret `WOWI_API_TOKEN`; it has no WoW Forever version, so the file is
+listed there for the other clients only).
 
 ### 4. Gallery
 
@@ -79,16 +79,15 @@ Unzip it and check that its `Tutti/` folder holds `Tutti.toc`, `LICENSE`, `CHANG
 `Core/`, `UI/` and `Media/` and nothing else: no `docs/`, `tests/`, `tools/`, `.github/`,
 `README.md` or `CLAUDE.md`.
 
-## When WoW Forever is patched
+## When a game version is patched
 
-`## Interface: 16001` in `Tutti.toc` is Forever's current interface number (1.60.1 is
-16001; a patch to 1.60.2 or 1.61.0 would make it 16002 or 16100). A client whose number
-differs marks Tutti out of date. After a patch, put the new number into `## Interface`
-(current value: `/dump select(4, GetBuildInfo())` in Forever, or
-https://warcraft.wiki.gg/wiki/TOC_format), keep the check in `tests/test_load.lua` in step,
-note it in `CHANGELOG.md` and release a new version. If CurseForge does not list the new
-Forever version yet, the packager tags the file with the nearest older one and says so in
-the run's log.
+`## Interface` in `Tutti.toc` lists one number per client (Retail, the Classic clients,
+WoW Forever: 1.60.1 is 16001). A client whose number is missing marks Tutti out of date, and
+Retail does not load it at all. After a patch, add the client's new number (current values:
+https://warcraft.wiki.gg/wiki/TOC_format, or `/dump select(4, GetBuildInfo())` in that
+client), keep `tests/test_load.lua`'s `INTERFACES` in step, note it in `CHANGELOG.md` and
+release a new version. If CurseForge does not list a new version yet, the packager tags the
+file with the nearest older one and says so in the run's log.
 
 ## Notes
 
