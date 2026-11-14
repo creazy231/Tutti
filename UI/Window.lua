@@ -66,11 +66,15 @@ local views = {}           -- card -> its view
 local folded = {}          -- card -> true while it is a line under "DONE"
 local awaited = {}         -- card -> whether it waited on the player when the window last looked
 local chimed = setmetatable({}, { __mode = "k" }) -- card -> the chime played for it
+local stalled = setmetatable({}, { __mode = "k" }) -- view -> its Tick failed: it ticks no more until reused
+local tops = {}            -- card -> where its view begins in the rolls, at the last layout
 local builders, pages = {}, {} -- the registered views: name -> build, and once built, name -> frame
+local broken = {}          -- name -> its builder failed: it is not asked again until registered anew
 local countdown            -- { total, left, endsAt, paused } while the window counts down to closing
 local closing              -- the Sink while the window fades out
 local closingByItself      -- that fade is the countdown's (not a close the player asked for)
 local contentHeight, visibleHeight = 0, 0
+local byHand = false       -- the player has scrolled since the window last opened
 
 -------------------------------------------------------------------------------
 --  Small helpers
@@ -173,7 +177,7 @@ W.Paint(sky, function(t)
     t:SetColorTexture(1, 1, 1, 1)
     t:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.55))
 end)
-W.Hair(head, "BOTTOM")
+head.hair = W.Hair(head, "BOTTOM")
 
 local items = CreateFrame("Frame", nil, head) -- the header's items, centred on it
 items:SetPoint("TOPLEFT")
@@ -278,15 +282,18 @@ end
 
 -- The size setting, and the saved top-left corner. The corner is kept in UIParent's units and the anchor's
 -- offsets are in the window's own (they grow with its scale), so they are divided by the scale: the corner
--- stays where it was saved, whatever the size.
+-- stays where it was saved, whatever the size. A hairline is one physical pixel at the scale it was painted
+-- for (W.Pixel), so a new size paints everything again, the cards included, as new looks do.
 local function place()
     local saved = ns.DB and ns.DB.window or {}
     local home = ns.DEFAULTS.window
     local x, y = ns.Clear(saved.x, "number") or home.x, ns.Clear(saved.y, "number") or home.y
     local scale = sizeSetting()
+    local resized = ns.Clear(win:GetScale(), "number") ~= scale
     win:SetScale(scale)
     win:ClearAllPoints()
     win:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x / scale, y / scale)
+    if resized then ns.Fire("LOOKS_CHANGED") end
 end
 
 -- After a drag: the top-left corner, in UIParent's units from its top-left, whole pixels.
@@ -332,6 +339,7 @@ local function layoutRolls()
             view:SetPoint("TOPLEFT", rolls, "TOPLEFT", 0, -y)
             view.divider:SetShown(not first) -- no hairline between the header and the first card
             first = false
+            tops[card] = y
             y = y + view:Height()
         end
     end
@@ -347,6 +355,7 @@ local function layoutRolls()
                 local view = views[card]
                 view:ClearAllPoints()
                 view:SetPoint("TOPLEFT", rolls, "TOPLEFT", 0, -y)
+                tops[card] = y
                 y = y + view:Height()
             end
         end
@@ -388,6 +397,18 @@ local function relayout()
     scroll:SetHeight(visibleHeight)
     win:SetHeight(HEAD_H + visibleHeight)
     scrollTo(scrolled())
+end
+
+-- A card the player has to roll on is never left out of sight: the rolls scroll the least that shows it whole
+-- (its top, when it is higher than the window can show), unless the player has scrolled by hand since the
+-- window last opened.
+local function reveal(card)
+    local top, view = tops[card], views[card]
+    if byHand or current ~= "rolls" or folded[card] or not (top and view) then return end
+    local offset, bottom = scrolled(), top + view:Height()
+    if bottom > offset + visibleHeight then offset = bottom - visibleHeight end
+    if top < offset then offset = top end
+    scrollTo(offset)
 end
 
 -------------------------------------------------------------------------------
@@ -528,10 +549,12 @@ end
 -- stays there. Tutti never writes anything else of Polestar's.
 local note, noteHome
 
+-- Only a note at the top of the screen, and only with an anchor that can be read, to be given back.
 local function adoptNote()
     if not (note and win:IsVisible() and note:IsVisible()) then return end
     local point, rel, relPoint, x, y = note:GetPoint(1)
-    if rel ~= UIParent then return end
+    point, rel, relPoint = ns.Text(point), ns.Clear(rel, "table"), ns.Text(relPoint)
+    if not (point and relPoint) or rel ~= UIParent then return end
     noteHome = { point, rel, relPoint, ns.Clear(x, "number") or 0, ns.Clear(y, "number") or 0 }
     note:ClearAllPoints()
     note:SetPoint("TOPLEFT", win, "BOTTOMLEFT", 0, NOTE_GAP)
@@ -541,7 +564,8 @@ local function releaseNote()
     if not (note and noteHome) then return end
     local home = noteHome
     noteHome = nil
-    if select(2, note:GetPoint(1)) ~= win then return end
+    local _, rel = note:GetPoint(1)
+    if ns.Clear(rel, "table") ~= win then return end
     note:ClearAllPoints()
     note:SetPoint(home[1], home[2], home[3], home[4], home[5])
 end
@@ -558,15 +582,22 @@ end
 -------------------------------------------------------------------------------
 --  Views
 -------------------------------------------------------------------------------
--- A registered view's frame, built the first time it is wanted. Nil when nobody registered it or its
--- builder failed or gave no usable frame.
+-- A registered view's frame, built the first time it is wanted. Nil when nobody registered it, or when its
+-- builder failed or gave no frame with :Refresh() and :Height(): that is reported once and the builder is not
+-- asked again (it would make its frames anew each time), until a builder is registered for the name again.
 local function pageOf(name)
     if pages[name] then return pages[name] end
     local build = builders[name]
-    if not build then return nil end
+    if not build or broken[name] then return nil end
     local frame
-    if not ns.Safe(function() frame = build(content) end) then return nil end
-    if type(frame) ~= "table" or type(frame.Refresh) ~= "function" or type(frame.Height) ~= "function" then
+    local ok = ns.Safe(function() frame = build(content) end)
+    if ok and not (type(frame) == "table" and type(frame.Refresh) == "function"
+        and type(frame.Height) == "function") then
+        ok = false
+        ns.Safe(error, ("Tutti: the view %q gave no frame with :Refresh() and :Height()"):format(name))
+    end
+    if not ok then
+        broken[name] = true
         return nil
     end
     frame:SetParent(content)
@@ -590,6 +621,7 @@ function UI.Open(name)
     if name ~= "rolls" and not pageOf(name) then return false end
     local appearing = not win:IsShown()
     stayOpen()
+    if appearing then byHand = false end
     if appearing or name ~= current then switchTo(name) end
     if name ~= "rolls" then ns.Safe(pages[name].Refresh, pages[name]) end
     if appearing then
@@ -625,7 +657,7 @@ function UI.Relayout() relayout() end
 
 function UI.RegisterView(name, build)
     if type(name) ~= "string" or name == "rolls" or type(build) ~= "function" then return false end
-    builders[name] = build
+    builders[name], broken[name] = build, nil
     return true
 end
 
@@ -647,20 +679,37 @@ end)
 
 scroll:SetScript("OnMouseWheel", function(_, delta)
     delta = ns.Clear(delta, "number")
-    if delta then scrollTo(scrolled() - delta * WHEEL) end
+    if not delta then return end
+    byHand = true
+    scrollTo(scrolled() - delta * WHEEL)
 end)
 
 -- Every frame while the window shows: the cards' seconds and bars, the folds, the countdown, and Polestar's
--- note until it exists.
-win:SetScript("OnUpdate", function()
-    for _, card in ipairs(order) do views[card]:Tick() end
-    if refold() then relayout() end
-    if countdown and not fading() then
-        stepCountdown()
-        drawCountdown()
-        if not countdown.paused and countdown.left <= EPSILON then fadeOut(true) end
+-- note until it exists. Each runs protected, so one that fails stops none of the others (the window always
+-- closes); a card whose Tick failed is reported once and ticks no more.
+local function tickCards()
+    for _, card in ipairs(order) do
+        local view = views[card]
+        if not stalled[view] and not ns.Safe(view.Tick, view) then stalled[view] = true end
     end
-    if not note then findNote() end
+end
+
+local function foldStep()
+    if refold() then relayout() end
+end
+
+local function countdownStep()
+    if not countdown or fading() then return end
+    stepCountdown()
+    drawCountdown()
+    if not countdown.paused and countdown.left <= EPSILON then fadeOut(true) end
+end
+
+win:SetScript("OnUpdate", function()
+    tickCards()
+    ns.Safe(foldStep)
+    ns.Safe(countdownStep)
+    if not note then ns.Safe(findNote) end
 end)
 
 win:SetScript("OnShow", function() adoptNote() end)
@@ -675,20 +724,22 @@ end)
 -------------------------------------------------------------------------------
 --  Wiring
 -------------------------------------------------------------------------------
--- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden).
+-- A new card: in at the bottom of the open cards, and the window shows the rolls (rising if it was hidden),
+-- scrolled to the card when it waits on the player.
 ns.Listen("CARD_ADDED", function(card)
     if type(card) ~= "table" or views[card] then return end
     local view = Card.Acquire(rolls)
-    views[card] = view
+    views[card], stalled[view] = view, nil
     order[#order + 1] = card
     view:Bind(card)
     awaited[card] = Rolls.AwaitsMe(card)
     refold()
     UI.Open("rolls")
+    if awaited[card] then reveal(card) end
 end)
 
 -- The card draws what changed. A card that starts waiting on the player (its roll joined a card the history
--- made, or a bind confirmation gave the pick back) brings the rolls up, hidden or not.
+-- made, or a bind confirmation gave the pick back) brings the rolls up, hidden or not, and itself into sight.
 ns.Listen("CARD_CHANGED", function(card, changes)
     local view = views[card]
     if not view then return end
@@ -698,6 +749,7 @@ ns.Listen("CARD_CHANGED", function(card, changes)
     awaited[card] = awaits
     if started then
         UI.Open("rolls")
+        reveal(card)
     else
         relayout()
         drawHeader()
@@ -728,7 +780,7 @@ ns.Listen("CARD_REMOVED", function(card)
     local view = views[card]
     if not view then return end
     Card.Release(view)
-    views[card], folded[card], awaited[card] = nil, nil, nil
+    views[card], folded[card], awaited[card], tops[card] = nil, nil, nil, nil
     for i, c in ipairs(order) do
         if c == card then table.remove(order, i); break end
     end
