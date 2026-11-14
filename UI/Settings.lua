@@ -249,7 +249,13 @@ local function build(parent)
 
     function view:Refresh() refresh(self) end
     function view:Height() return self.height end
-    W.Paint(view, layout) -- the looks changed: the fonts, and with them the lines' heights
+    -- The looks changed: the fonts, and with them how the lines wrap; the window fits the rows again (not while it
+    -- is building the view: it fits it itself).
+    W.Paint(view, function(self)
+        layout(self)
+        if self.built and self:IsVisible() then ns.UI.Relayout() end
+    end)
+    view.built = true
     Settings.view = view
     return view
 end

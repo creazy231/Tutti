@@ -261,3 +261,17 @@ T.it("with the setting off at login there is nothing to reload", function()
     view.roll.control:Click()
     T.eq(text(W, view.roll.desc), RELOAD_LINE, "off again: now they need a reload")
 end)
+
+T.it("a new font that wraps the lines otherwise has the window fit the rows again", function()
+    local G, W, ns, win, view = setup()
+    local font = ns.Theme.Font
+    ns.Theme.Font = function(role)
+        local path, size, flags = font(role)
+        if role == "small" then size = 14 end -- EllesmereUI's font changed: the line under a label wraps anew
+        return path, size, flags
+    end
+    local before = view:Height()
+    ns.Fire("LOOKS_CHANGED")
+    T.ok(view:Height() > before, "the row grew")
+    T.eq(win:GetHeight(), 32 + view:Height(), "and the window with it")
+end)
