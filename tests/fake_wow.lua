@@ -192,11 +192,11 @@ function F.new(opts)
         -- A font string without a set width is as wide as its text, as in the client.
         if o._type == "FontString" then
             local size = (o._font and o._font[2]) or 12
-            if not (L and R) and w == 0 then w = #W.plain(o._text or "") * size * 0.5 end
+            if not (L and R) and w == 0 then w = W.textWidth(o) end
             if not (T and B) and h == 0 then
                 local lines = 1
                 if o._wrap ~= false and ((L and R) or (o._w or 0) > 0) and w > 0 then
-                    lines = math.max(1, math.ceil(#W.plain(o._text or "") * size * 0.5 / w))
+                    lines = math.max(1, math.ceil(W.textWidth(o) / w))
                 end
                 h = lines * (size + 2)
             end
@@ -219,9 +219,18 @@ function F.new(opts)
     function Object:IsForbidden() return false end
     function Object:IsProtected() return false end
     function Object:GetParent() return self._parent end
+    -- A frame or region moves to its new parent's list and leaves its old one, as in the client.
     function Object:SetParent(p)
+        local list = (self._type == "Texture" or self._type == "FontString" or self._type == "Line") and "_regions"
+            or "_children"
+        local old = self._parent
+        if old and old[list] then
+            for i, o in ipairs(old[list]) do
+                if o == self then table.remove(old[list], i); break end
+            end
+        end
         self._parent = p
-        if p and p._children then p._children[#p._children + 1] = self end
+        if p and p[list] then p[list][#p[list] + 1] = self end
     end
     function Object:SetPoint(p, rel, rp, x, y)
         if type(rel) == "number" then rel, rp, x, y = nil, nil, rel, rp end
@@ -458,11 +467,16 @@ function F.new(opts)
     function Object:SetSpacing(s) self._spacing = s end
     function Object:SetIndentedWordWrap() end
     function Object:SetShadowOffset(x, y) self._shadow = { x, y } end
-    function Object:SetShadowColor() end
+    function Object:GetShadowOffset() local o = self._shadow or { 0, 0 }; return o[1], o[2] end
+    function Object:SetShadowColor(r, g, b, a) self._shadowColor = { r, g, b, a or 1 } end
+    function Object:GetShadowColor() local c = self._shadowColor or { 0, 0, 0, 1 }; return c[1], c[2], c[3], c[4] end
     function Object:SetTextScale(s) self._textScale = s end
     function Object:GetTextScale() return self._textScale or 1 end
     local function fontSize(o) return (o._font and o._font[2]) or 12 end
-    function Object:GetStringWidth() return #plain(self._text or "") * fontSize(self) * 0.5 end
+    -- How wide a font string's text is: half its size a character. tools/render_ui.lua puts the real font's
+    -- advances here, so what it draws is laid out as the client would.
+    function W.textWidth(o) return #plain(o._text or "") * fontSize(o) * 0.5 end
+    function Object:GetStringWidth() return W.textWidth(self) end
     function Object:GetUnboundedStringWidth() return self:GetStringWidth() end
     function Object:GetStringHeight()
         local size = fontSize(self)
