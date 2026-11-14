@@ -47,12 +47,7 @@ local function saved()
     return db.recent
 end
 
--- A non-empty string the game gave in the clear, else nil.
-local function text(value)
-    value = ns.Clear(value, "string")
-    if value == "" then return nil end
-    return value
-end
+local text = ns.Text -- a non-empty string the game gave in the clear, else nil
 
 -- Where the player is: the instance's name inside an instance, else the zone's. GetInstanceInfo
 -- names the continent outside an instance, so it is asked only inside one.

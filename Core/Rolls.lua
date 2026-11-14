@@ -320,13 +320,14 @@ local function confirming(card, kind)
     end
 end
 
--- The item info of a card, asked again: it may have reached the client's cache since. A card the
--- loot history made has no roll to name its item, so it takes its name, icon and quality from the
--- item as well, and keeps what it had where the client still says nothing. So does a demo card, whose
--- own words stand in until the client has the item, and it takes the client's link for its own.
+-- The item info of a card, asked again: it may have reached the client's cache since. A label and an item level
+-- the client cannot give now (an item it has let go of) keep what the card knew. A card the loot history made has
+-- no roll to name its item, so it takes its name, icon and quality from the item as well, and keeps what it had
+-- where the client still says nothing. So does a demo card, whose own words stand in until the client has the
+-- item, and it takes the client's link for its own.
 local function refreshItem(card)
     local label, ilvl = ns.Items.Describe(card.link)
-    if card.demo then label, ilvl = label or card.label, ilvl or card.ilvl end
+    label, ilvl = label or card.label, ilvl or card.ilvl
     local different = label ~= card.label or ilvl ~= card.ilvl
     card.label, card.ilvl = label, ilvl
     if (not card.rollID or card.demo) and card.link then
@@ -704,6 +705,7 @@ ns.On("CONFIRM_LOOT_ROLL", function(_, rollID, rollType)
 end)
 
 ns.On("GET_ITEM_INFO_RECEIVED", function(_, itemID)
+    if #list == 0 then return end -- the client fetches items all the time; most of it is none of Tutti's
     itemID = clear(itemID, "number")
     if not itemID then return end
     for _, card in ipairs(Rolls.Cards()) do

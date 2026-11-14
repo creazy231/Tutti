@@ -269,3 +269,57 @@ T.it("the fake client's group follows the list", function()
     T.eq(G.GetNumGroupMembers(), 0)
     T.eq(G.UnitExists("raid1"), false)
 end)
+
+T.it("a member the game names Unknown after a raid /reload is listed once its name arrives (final review, item 10)",
+    function()
+    local G, W, ns = T.load()
+    G.UNKNOWNOBJECT = "Unknown"
+    local list = raid()
+    local real = list[4].name
+    list[4].name = "Unknown" -- the game has not got the member's name yet
+    W.setGroup(list, { raid = true })
+    T.eq(column(ns.Group.Members(), "unit"), "raid1,raid2,raid3,raid5", "not listed as Unknown")
+    local changed = 0
+    ns.Listen("GROUP_CHANGED", function() changed = changed + 1 end)
+    -- The name arrives: the game says so for the unit.
+    W.units.raid4.name = real
+    W.fire("UNIT_NAME_UPDATE", "raid4")
+    T.eq(column(ns.Group.Members(), "unit"), "raid1,raid2,raid3,raid4,raid5", "now listed in its slot")
+    T.eq(ns.Group.Members()[4].name, real)
+    T.eq(changed, 1, "GROUP_CHANGED")
+    -- A name update that changes nothing, or for a unit outside the group, rebuilds nothing.
+    W.fire("UNIT_NAME_UPDATE", "raid4")
+    W.fire("UNIT_NAME_UPDATE", "target")
+    W.fire("UNIT_NAME_UPDATE", "player")
+    W.fire("UNIT_NAME_UPDATE", T.secret("raid4"))
+    W.fire("UNIT_NAME_UPDATE", nil)
+    T.eq(changed, 1, "nothing new")
+    -- A party member renamed (a name change while grouped) is picked up too.
+    W.setGroup(party())
+    W.units.party2.name = "Kestrel Ironmark"
+    W.fire("UNIT_NAME_UPDATE", "party2")
+    T.eq(ns.Group.Members()[2].first, "Kestrel")
+end)
+
+T.it("a raid's size and flag pass ns.Clear (final review, item 10)", function()
+    local G, W, ns = T.load()
+    W.setGroup(raid(), { raid = true })
+    T.eq(#ns.Group.Members(), 5)
+    G.GetNumGroupMembers = function() return T.secret(5) end
+    W.fire("GROUP_ROSTER_UPDATE")
+    T.eq(column(ns.Group.Members(), "unit"), "player", "a size the game keeps secret lists no raid slot")
+    T.eq(ns.Group.IsRaid(), true)
+    G.GetNumGroupMembers = function() return 5 end
+    G.IsInRaid = function() return T.secret(true) end
+    W.fire("GROUP_ROSTER_UPDATE")
+    T.eq(ns.Group.IsRaid(), false, "a secret raid flag is no raid")
+    G.IsInRaid = function() return true end
+    G.GetNumGroupMembers = function() return 100 end
+    local asked, guid = {}, G.UnitGUID
+    G.UnitGUID = function(unit) asked[#asked + 1] = unit; return guid(unit) end
+    W.fire("GROUP_ROSTER_UPDATE")
+    T.eq(#ns.Group.Members(), 5, "the slots the game fills")
+    local last = 0
+    for _, unit in ipairs(asked) do last = math.max(last, tonumber(unit:match("^raid(%d+)$")) or 0) end
+    T.eq(last, 40, "a raid is 40 slots at most")
+end)

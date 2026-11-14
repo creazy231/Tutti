@@ -700,6 +700,35 @@ T.it("a rebuild skips what the game gives in the clear or not at all", function(
     T.eq(#ns.Rolls.Cards(), 1, "no error, nothing new")
 end)
 
+T.it("an item the client lets go of keeps the card's label and level (final review, item 10)", function()
+    local G, W, ns = T.load()
+    W.cacheItem(AXE, axeInfo())
+    local card = newCard(W, ns, 7)
+    T.eq(card.label, "Two-Hand Axe")
+    T.eq(card.ilvl, 33)
+    local changed = listen(ns, "CARD_CHANGED")
+    W.items[AXE] = nil -- the client's cache lets the item go, and says something about it
+    W.fire("GET_ITEM_INFO_RECEIVED", AXE, false)
+    T.eq(card.label, "Two-Hand Axe", "the label stays")
+    T.eq(card.ilvl, 33, "and the level")
+    T.eq(#changed, 0, "nothing changed")
+end)
+
+T.it("item info with no card to fill reads nothing (final review, item 10)", function()
+    local G, W, ns = T.load()
+    -- Every read of a game value asks ns.IsSecret (ns.Clear does, through ns, on every call).
+    local reads, isSecret = 0, ns.IsSecret
+    local function counting(...) reads = reads + 1; return isSecret(...) end
+    ns.IsSecret = counting
+    W.cacheItem(AXE, axeInfo())
+    T.eq(reads, 0, "no card: the event is let go at once")
+    ns.IsSecret = isSecret
+    newCard(W, ns, 7)
+    ns.IsSecret = counting
+    W.cacheItem(AXE, axeInfo())
+    T.ok(reads > 0, "with a card it is read")
+end)
+
 T.it("an uncached item fills in its label later", function()
     local G, W, ns = T.load()
     local changed = listen(ns, "CARD_CHANGED")
